@@ -1,3 +1,4 @@
+# Forward pass only for now
 # torchrun --nnodes=1 --nproc-per-node=4 mlp_tp.py -n 100 -d 4096
 import os
 import numpy as np
