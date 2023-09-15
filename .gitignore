@@ -2,3 +2,4 @@ models/
 artifacts/
 __pycache__
 MNIST/
+triton/official
