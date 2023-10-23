@@ -1,4 +1,4 @@
-# CUDA_VISIBLE_DEVICES=1,0 torchrun --nnodes 1 --nproc_per_node 2 T5_training.py
+# CUDA_VISIBLE_DEVICES=0,1 torchrun --nnodes 1 --nproc_per_node 2 T5_training.py
 import os
 import argparse
 import torch
@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from transformers import AutoTokenizer, GPT2TokenizerFast, DataCollatorForSeq2Seq
-from transformers import T5Tokenizer, T5ForConditionalGeneration
+from transformers import T5Tokenizer, AutoModelForSeq2SeqLM, T5ForConditionalGeneration
 import functools
 from torch.optim.lr_scheduler import StepLR, LambdaLR
 import torch.nn.functional as F
@@ -15,6 +15,10 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from transformers.models.t5.modeling_t5 import T5Block
+
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+ checkpoint_wrapper,
+ CheckpointImpl)
 
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
@@ -181,11 +185,11 @@ def validation(model, rank, world_size, val_loader):
     return val_loss
 
 
-def setup_model(model_name):
-    model = T5ForConditionalGeneration.from_pretrained(model_name, torch_dtype=torch.bfloat16, use_cache=False)
-    from optimum.bettertransformer import BetterTransformer
-    model = BetterTransformer.transform(model) 
-    tokenizer =  T5Tokenizer.from_pretrained(model_name)
+def setup_model(model_name, max_token_count):
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, n_positions=max_token_count, torch_dtype=torch.bfloat16, use_cache=False)
+    # from optimum.bettertransformer import BetterTransformer
+    # model = BetterTransformer.transform(model) 
+    tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_token_count)
     return model, tokenizer
 
 def _get_linear_schedule_with_warmup_lr_lambda(current_step: int, *, num_warmup_steps: int, num_training_steps: int):
@@ -222,7 +226,7 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 
 def fsdp_main(args):
 
-    model, tokenizer = setup_model("google/flan-t5-xl")
+    model, tokenizer = setup_model("google/flan-t5-xl", 2048)
 
     local_rank = int(os.environ['LOCAL_RANK'])
     rank = int(os.environ['RANK'])
@@ -254,6 +258,11 @@ def fsdp_main(args):
     train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
     val_loader = torch.utils.data.DataLoader(val_dataset, **test_kwargs)
     
+    for x in train_loader:
+        if rank == 0:
+            print("Train Loader batch length:", x["input_ids"].shape)
+        break
+
     t5_auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
@@ -282,6 +291,8 @@ def fsdp_main(args):
         mp_policy = None # defaults to fp32
         
     print("MP Policy", mp_policy)
+    print("Model N-positions:", model.config.n_positions)
+    print("Tokenizer max-length:", tokenizer.model_max_length)
     model = FSDP(model,
         auto_wrap_policy=t5_auto_wrap_policy,
         mixed_precision=mp_policy,
@@ -346,8 +357,8 @@ def fsdp_main(args):
         #print(f"Cuda event elapsed time: {init_start_event.elapsed_time(init_end_event) / 1000}sec")
         # print(f"{model}")
 
-        if args.save_model and curr_val_loss < best_val_loss:
-            
+        # if args.save_model and curr_val_loss < best_val_loss:
+        if args.save_model:
             # save
             if rank == 0:
                 print(f"--> entering save model state")
@@ -372,7 +383,6 @@ def fsdp_main(args):
                 torch.save(cpu_state, save_name)
             
         if curr_val_loss < best_val_loss:
-
             best_val_loss = curr_val_loss
             if rank==0:
                 print(f"-->>>> New Val Loss Record: {best_val_loss}")
