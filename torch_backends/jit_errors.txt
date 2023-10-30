@@ -1,0 +1,104 @@
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01104736328125 at index (0, 571) (up to 0.01 allowed)
+Greatest relative difference: 0.1060791015625 at index (0, 571) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01416015625 at index (0, 915) (up to 0.01 allowed)
+Greatest relative difference: 0.04949951171875 at index (0, 915) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 3 / 1000 (0.3%)
+Greatest absolute difference: 0.01116943359375 at index (0, 571) (up to 0.01 allowed)
+Greatest relative difference: 1.3603515625 at index (0, 21) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01068115234375 at index (0, 652) (up to 0.01 allowed)
+Greatest relative difference: 0.1805419921875 at index (0, 652) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 2 / 1000 (0.2%)
+Greatest absolute difference: 0.0157470703125 at index (0, 91) (up to 0.01 allowed)
+Greatest relative difference: 0.06842041015625 at index (0, 348) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01153564453125 at index (0, 571) (up to 0.01 allowed)
+Greatest relative difference: 0.1593017578125 at index (0, 571) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01220703125 at index (0, 548) (up to 0.01 allowed)
+Greatest relative difference: 0.080078125 at index (0, 548) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01092529296875 at index (0, 768) (up to 0.01 allowed)
+Greatest relative difference: 0.273193359375 at index (0, 768) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01092529296875 at index (0, 224) (up to 0.01 allowed)
+Greatest relative difference: 0.21484375 at index (0, 224) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01263427734375 at index (0, 369) (up to 0.01 allowed)
+Greatest relative difference: 0.39013671875 at index (0, 369) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 2 / 1000 (0.2%)
+Greatest absolute difference: 0.01141357421875 at index (0, 571) (up to 0.01 allowed)
+Greatest relative difference: 0.2705078125 at index (0, 483) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01318359375 at index (0, 571) (up to 0.01 allowed)
+Greatest relative difference: 0.062103271484375 at index (0, 571) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.010589599609375 at index (0, 548) (up to 0.01 allowed)
+Greatest relative difference: 0.18115234375 at index (0, 548) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.0128173828125 at index (0, 492) (up to 0.01 allowed)
+Greatest relative difference: 0.0633544921875 at index (0, 492) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01251220703125 at index (0, 827) (up to 0.01 allowed)
+Greatest relative difference: 0.1639404296875 at index (0, 827) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.011962890625 at index (0, 369) (up to 0.01 allowed)
+Greatest relative difference: 0.0623779296875 at index (0, 369) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01177978515625 at index (0, 91) (up to 0.01 allowed)
+Greatest relative difference: 0.296875 at index (0, 91) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01348876953125 at index (0, 224) (up to 0.01 allowed)
+Greatest relative difference: 0.1424560546875 at index (0, 224) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.0115966796875 at index (0, 224) (up to 0.01 allowed)
+Greatest relative difference: 0.1591796875 at index (0, 224) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.01239013671875 at index (0, 91) (up to 0.01 allowed)
+Greatest relative difference: 0.320556640625 at index (0, 91) (up to 0.01 allowed)
+Tensor-likes are not close!
+
+Mismatched elements: 1 / 1000 (0.1%)
+Greatest absolute difference: 0.012939453125 at index (0, 74) (up to 0.01 allowed)
+Greatest relative difference: 0.0643310546875 at index (0, 74) (up to 0.01 allowed)
+Success Rate = 79.0
