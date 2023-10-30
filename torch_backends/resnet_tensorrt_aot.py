@@ -1,3 +1,4 @@
+# Works after this (for now) - `pip install --pre torch torch-tensorrt --extra-index-url https://download.pytorch.org/whl/nightly/cu121`
 import torch_tensorrt
 import torch
 
