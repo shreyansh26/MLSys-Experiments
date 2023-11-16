@@ -1,12 +1,16 @@
+import os
+from torch.optim import Adam
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM
+import oslo
+from oslo.torch.distributed import ParallelContext, ParallelMode
+from oslo.torch.nn.parallel import TensorParallel
+
+from tqdm import tqdm
+
 BATCH_SIZE = 4
 SEQ_LEN = 64
 SAVE_INTERVAL = 50
 TRAIN_STEP = 100
-
-from tqdm import tqdm
-import os
-from torch.optim import Adam
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM
 
 # model = AutoModelForCausalLM.from_pretrained("gpt2")
 model = AutoModelForSeq2SeqLM.from_pretrained("t5-large")
@@ -15,11 +19,6 @@ tokenizer = AutoTokenizer.from_pretrained("t5-large")
 
 # Add pad token for batch training because GPT2 tokenizer doesn't have pad token.
 tokenizer.pad_token = tokenizer.eos_token
-
-# model = defined in section 2.2
-import oslo
-from oslo.torch.distributed import ParallelContext, ParallelMode
-from oslo.torch.nn.parallel import TensorParallel
 
 tp_size = 2
 tp_depth = 1
@@ -32,6 +31,7 @@ parallel_context = ParallelContext.from_torch(
     tensor_parallel_mode=ParallelMode.TENSOR_1D,
     tensor_parallel_depth=tp_depth,
 )
+
 model = TensorParallel(model, parallel_context)
 oslo.ready(model, parallel_context)
 
@@ -50,13 +50,8 @@ rank = parallel_context.get_local_rank(ParallelMode.DATA)
 if rank == 0:
     with open('data.txt', 'w') as f:
         f.write(str(datasets))
-
-# if rank == 0:
-#     print(datasets[1::2])
     
-train_sampler = DistributedSampler(
-        datasets, num_replicas=dp_size, rank=rank
-    )
+train_sampler = DistributedSampler(datasets, num_replicas=dp_size, rank=rank)
 dataloader = DataLoader(datasets, batch_size=BATCH_SIZE, sampler=train_sampler, shuffle=False)
 
 d0 = []
