@@ -1,4 +1,5 @@
 # CUDA_VISIBLE_DEVICES=0,1 torchrun --nnodes 1 --nproc_per_node 2 T5_training.py
+# CUDA_VISIBLE_DEVICES=0,1 torchrun --nnodes=1 --nproc_per_node=2 --rdzv_id=105 --rdzv_endpoint="0.0.0.0:29505" T5_training.py
 import os
 import argparse
 import torch
