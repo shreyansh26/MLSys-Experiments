@@ -47,7 +47,7 @@ def linear_layer_kernel(
     """
     Kernel for computing (C = A @ B.T + bias)
     A (Input) has shape (M, K), B (Weight) has shape (N, K), bias has shape (N,) and C (Output) has shape (M, N)
-    Note - A column-major traversal of B is essentially a row-major traversal of B_T which is what we want (A @ B.T + bias)
+    Note - A column-major traversal of B is essentially a row-major traversal of B_T which is what we want
     """
     # -----------------------------------------------------------
     # Map program ids `pid` to the block of C it should compute.
@@ -73,8 +73,8 @@ def linear_layer_kernel(
     offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
     offs_bn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
     offs_k = tl.arange(0, BLOCK_K)
-    a_ptrs = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak) # Increase one row, cover all columns
-    b_ptrs = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn) # Increase one row, cover all columnsa
+    a_ptrs = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak) # Row-major
+    b_ptrs = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn) # Column-major
 
     # -----------------------------------------------------------
     # Iterate to compute a block of the C matrix.
