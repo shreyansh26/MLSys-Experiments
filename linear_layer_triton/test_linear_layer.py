@@ -1,5 +1,5 @@
 import torch
-from linear_layer import linear_layer_triton
+from linear_layer_triton import linear_layer_triton
 import time
 
 torch.manual_seed(0)
