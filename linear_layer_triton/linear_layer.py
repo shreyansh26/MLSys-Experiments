@@ -1,8 +1,9 @@
+from typing import Optional
 import torch
-import time
 import triton
 import triton.language as tl
 from triton.ops.matmul_perf_model import early_config_prune, estimate_matmul_time
+from torch.cuda.amp import custom_fwd
 
 from activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_relu_triton, gelu_triton, fast_gelu_triton
 
@@ -26,7 +27,7 @@ from activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_relu_
     prune_configs_by={"early_config_prune": early_config_prune, "perf_model": estimate_matmul_time, "top_k": 10},
 )
 @triton.jit
-def linear_layer_kernel(
+def linear_layer_triton_kernel(
         # Pointers to matrices
         A, B, bias_ptr, C,
         # Matrix dimensions
@@ -46,7 +47,7 @@ def linear_layer_kernel(
 ):
     """
     Kernel for computing (C = A @ B.T + bias)
-    A (Input) has shape (M, K), B (Weight) has shape (N, K), bias has shape (N,) and C (Output) has shape (M, N)
+    A (inp) has shape (M, K), B (Weight) has shape (N, K), bias has shape (N,) and C (Output) has shape (M, N)
     Note - A column-major traversal of B is essentially a row-major traversal of B_T which is what we want
     """
     # -----------------------------------------------------------
@@ -123,41 +124,53 @@ def linear_layer_kernel(
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)
 
-def linear_layer(x, weight, bias, activation="", add_bias=True):
+def compute_linear_layer_triton(inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
     # Check constraints
     ## Dimension
-    x_flat = x if x.ndim == 2 else x.flatten(0, 1)
-    assert x_flat.shape[1] == weight.shape[1], "Dimension mismatch"
-    if add_bias:
+    inp_flat = inp if inp.ndim == 2 else inp.flatten(0, 1)
+    add_bias = bias is not None
+    assert inp_flat.shape[1] == weight.shape[1], "Dimension mismatch"
+    if bias is not None:
         assert bias.shape[0] == weight.shape[0], "Dimension mismatch"
     ## Dtype
-    assert x.dtype == weight.dtype, "Dtype mismatch"
+    assert inp.dtype == weight.dtype, "Dtype mismatch"
     if add_bias:
-        assert x.dtype == bias.dtype
+        assert inp.dtype == bias.dtype
     ## Contiguous
-    assert x.is_contiguous(), "Matrix A must be contiguous"
+    assert inp.is_contiguous(), "Matrix A must be contiguous"
     assert weight.is_contiguous(), "Matrix B must be contiguous"
     if add_bias:
         assert bias.is_contiguous(), "Matrix B must be contiguous"
 
-    M, K = x_flat.shape
+    M, K = inp_flat.shape
     N, K = weight.shape
 
     # Allocates output
-    out = torch.empty((M, N), device=x.device, dtype=x.dtype)
+    out = torch.empty((M, N), device=inp.device, dtype=inp.dtype)
 
     # 1D launch kernel where each block gets its own program.
     grid = lambda META: (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), )
 
-    linear_layer_kernel[grid](
-        x_flat, weight, bias, out,
+    linear_layer_triton_kernel[grid](
+        inp_flat, weight, bias, out,
         M, N, K,
-        x_flat.stride(0), x_flat.stride(1),
+        inp_flat.stride(0), inp_flat.stride(1),
         weight.stride(0), weight.stride(1),
         out.stride(0), out.stride(1),
         ACTIVATION=activation,
         ADD_BIAS=add_bias
     )
-    out = out if x.ndim == 2 else out.reshape(x.shape[0], -1, N)
+    out = out if inp.ndim == 2 else out.reshape(inp.shape[0], -1, N)
 
     return out
+
+class LinearLayerTriton(torch.autograd.Function):
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(ctx: torch.autograd.function.FunctionCtx, inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
+        ctx.save_for_backward(inp, weight, bias)
+        out = compute_linear_layer_triton(inp, weight, bias, activation)
+        return out
+    
+def linear_layer_triton(inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
+    return LinearLayerTriton.apply(inp, weight, bias, activation)
