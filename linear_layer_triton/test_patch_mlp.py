@@ -1,9 +1,9 @@
 import time
 import torch
-from mlp_models import MLP1, MLP2
+from mlp_models import MLP1, MLP2, MLP3
 from patch_mlp import patch_mlp
 
-mlp = MLP2().to('cuda')
+mlp = MLP3().to('cuda')
 mlp = mlp.half()
 new_mlp = patch_mlp(mlp)
 
