@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from linear_layer_triton import linear_layer_triton
-from torch.fx import symbolic_trace, GraphModule
+from torch.fx import GraphModule
 import utils
 from typing import Callable
 
@@ -18,8 +18,9 @@ def linear_layer_triton_wrapper(inp: torch.Tensor, ll_layer: nn.Linear, activati
 
 torch.fx.wrap("linear_layer_triton_wrapper")
 
-def replace_linear_layer_in_mlp1(gm: GraphModule):
-    print(gm.code)
+def replace_linear_layer1(gm: GraphModule, debug: bool=False):
+    if debug:
+        print(gm.code)
     class Pattern(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -37,10 +38,12 @@ def replace_linear_layer_in_mlp1(gm: GraphModule):
             return linear_layer_triton_wrapper(v, self.linear)
 
     utils.replace_pattern(gm, Pattern(), Replacement())
-    print(gm.code)
+    if debug:
+        print(gm.code)
 
-def replace_linear_layer_in_mlp2(gm: GraphModule, activation_module: Callable, activation: str):
-    print(gm.code)
+def replace_linear_layer2(gm: GraphModule, activation_module: Callable, activation: str, debug: bool=False):
+    if debug:
+        print(gm.code)
     class Pattern(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -60,10 +63,10 @@ def replace_linear_layer_in_mlp2(gm: GraphModule, activation_module: Callable, a
             return linear_layer_triton_wrapper(v, self.linear, activation=activation)
 
     utils.replace_pattern(gm, Pattern(), Replacement())
-    print(gm.code)
+    if debug:
+        print(gm.code)
 
-def patch_mlp(mlp: Callable):
-    gm = symbolic_trace(mlp)
-    replace_linear_layer_in_mlp2(gm, torch.nn.GELU(), "gelu")
-    replace_linear_layer_in_mlp1(gm)
-    return gm
+def patch_linear_layer(gm: GraphModule, debug: bool=False):
+    replace_linear_layer2(gm, torch.nn.GELU(), "gelu", debug=debug)
+    replace_linear_layer2(gm, torch.nn.ReLU(), "relu", debug=debug)
+    replace_linear_layer1(gm, debug=debug)
