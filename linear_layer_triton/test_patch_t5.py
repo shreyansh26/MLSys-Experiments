@@ -71,9 +71,7 @@ except Exception as e:
     print(e)
     print("❌ Triton and Torch differ!")
 
-input_ids = tokenizer(
-    "summarize: studies have shown that owning a dog is good for you", return_tensors="pt"
-).input_ids.to("cuda")  # Batch size 1
+input_ids = tokenizer("summarize: studies have shown that owning a dog is good for you", return_tensors="pt").input_ids.to("cuda")  # Batch size 1
 
 model.forward = gm_old
 outputs = model.generate(input_ids)
