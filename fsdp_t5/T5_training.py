@@ -1,5 +1,5 @@
-# CUDA_VISIBLE_DEVICES=0,1 torchrun --nnodes 1 --nproc_per_node 2 T5_training.py
-# CUDA_VISIBLE_DEVICES=0,1 torchrun --nnodes=1 --nproc_per_node=2 --rdzv_id=105 --rdzv_endpoint="0.0.0.0:29505" T5_training.py
+# CUDA_VISIBLE_DEVICES=0,3 torchrun --nnodes 1 --nproc_per_node 2 T5_training.py
+# CUDA_VISIBLE_DEVICES=5,7 torchrun --nnodes=1 --nproc_per_node=2 --rdzv_id=105 --rdzv_endpoint="0.0.0.0:29505" T5_training.py
 import os
 import argparse
 import torch
@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from transformers import AutoTokenizer, GPT2TokenizerFast, DataCollatorForSeq2Seq
 from transformers import T5Tokenizer, AutoModelForSeq2SeqLM, T5ForConditionalGeneration
+from tokenizers import AddedToken
 import functools
 from torch.optim.lr_scheduler import StepLR, LambdaLR
 import torch.nn.functional as F
@@ -187,10 +188,17 @@ def validation(model, rank, world_size, val_loader):
 
 
 def setup_model(model_name, max_token_count):
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, n_positions=max_token_count, torch_dtype=torch.bfloat16, use_cache=False)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, use_cache=False)
     # from optimum.bettertransformer import BetterTransformer
     # model = BetterTransformer.transform(model) 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_token_count)
+    tokenizer = T5Tokenizer.from_pretrained(model_name, model_max_length=max_token_count)
+    # Optional - required for JSON outputs
+    tokenizer.add_tokens([AddedToken("\n", normalized=False)])
+    tokenizer.add_tokens([AddedToken("{", normalized=False)])
+    tokenizer.add_tokens([AddedToken("}", normalized=False)])
+    tokenizer.add_tokens([AddedToken("\\", normalized=False)])
+
+    # model.resize_token_embeddings(len(tokenizer))
     return model, tokenizer
 
 def _get_linear_schedule_with_warmup_lr_lambda(current_step: int, *, num_warmup_steps: int, num_training_steps: int):
@@ -233,8 +241,11 @@ def fsdp_main(args):
     rank = int(os.environ['RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
 
-    tokenized_dataset = get_datasets("data/train_sample.csv", "data/val_sample.csv", "google/flan-t5-xl", 2048)
+    tokenized_dataset = get_datasets("data/train_sample.csv", "data/val_sample.csv", tokenizer, "google/flan-t5-xl", 2048)
     train_dataset, val_dataset = tokenized_dataset["train"], tokenized_dataset["valid"]
+
+    if rank == 0:
+        print(train_dataset['labels'][0])
 
     sampler1 = DistributedSampler(train_dataset, rank=rank, num_replicas=world_size, shuffle=True)
     sampler2 = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
@@ -291,9 +302,15 @@ def fsdp_main(args):
     else:
         mp_policy = None # defaults to fp32
         
-    print("MP Policy", mp_policy)
-    print("Model N-positions:", model.config.n_positions)
-    print("Tokenizer max-length:", tokenizer.model_max_length)
+    if rank == 0:
+        print("MP Policy", mp_policy)
+        # print("Model N-positions:", model.config.n_positions)
+        print("Tokenizer max-length:", tokenizer.model_max_length)
+        print("Tokenizer vocab length:", len(tokenizer))
+        print("Model encoder embed shape:", model.encoder.embed_tokens.weight.shape)
+        print("Model decoder embed shape:", model.decoder.embed_tokens.weight.shape)
+        print("Model lm_head shape:", model.lm_head.weight.shape)
+
     model = FSDP(model,
         auto_wrap_policy=t5_auto_wrap_policy,
         mixed_precision=mp_policy,
@@ -401,7 +418,7 @@ if __name__ == '__main__':
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 3)')
-    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
+    parser.add_argument('--lr', type=float, default=5e-5, metavar='LR',
                         help='learning rate (default: .002)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')

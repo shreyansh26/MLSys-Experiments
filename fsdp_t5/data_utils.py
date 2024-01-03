@@ -16,15 +16,12 @@ import numpy as np
 from nltk.tokenize import sent_tokenize
 nltk.download("punkt")
 
-def get_datasets(train_file_path, valid_file_path, MODEL_NAME, MAX_TOKEN_COUNT):
+def get_datasets(train_file_path, valid_file_path, tokenizer, MODEL_NAME, MAX_TOKEN_COUNT):
     dataset = load_instruction_dataset(
-            train_path=train_file_path, valid_path=valid_file_path
+            train_path=train_file_path, valid_path=valid_file_path, max_token_count=MAX_TOKEN_COUNT
         )
     print(f"Train dataset size: {len(dataset['train'])}")
     print(f"Test dataset size: {len(dataset['valid'])}")
-
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, model_max_length=MAX_TOKEN_COUNT)
-    tokenizer.add_tokens([AddedToken("\n", normalized=False)])
 
     print(dataset["train"][0])
 
