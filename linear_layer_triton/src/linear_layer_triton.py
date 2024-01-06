@@ -26,6 +26,9 @@ from src.activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_r
     key=['M', 'N', 'K'],
     prune_configs_by={"early_config_prune": early_config_prune, "perf_model": estimate_matmul_time, "top_k": 10},
 )
+@triton.heuristics({
+    'EVEN_N': lambda args: args["N"] % (args['BLOCK_N']) == 0,
+})
 @triton.jit
 def linear_layer_triton_kernel(
         # Pointers to matrices
@@ -40,6 +43,7 @@ def linear_layer_triton_kernel(
         stride_cm, stride_cn,
         # Meta-parameters
         BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+        EVEN_N: tl.constexpr,
         SPLIT_K: tl.constexpr,
         GROUP_SIZE_M: tl.constexpr,
         ACTIVATION: tl.constexpr,
@@ -86,7 +90,10 @@ def linear_layer_triton_kernel(
 
     if ADD_BIAS:
         bias_ptrs = bias_ptr + offs_bn
-        bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0).to(tl.float32)
+        if EVEN_N:
+            bias = tl.load(bias_ptrs).to(tl.float32)
+        else:
+            bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0).to(tl.float32)
         accumulator += bias[None, :]
 
     for k in range(0, tl.cdiv(K, BLOCK_K)):
