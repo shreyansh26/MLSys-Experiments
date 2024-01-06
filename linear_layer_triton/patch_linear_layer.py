@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from linear_layer_triton import linear_layer_triton
+from linear_layer_triton import LinearLayerTriton
 from torch.fx import GraphModule
 import utils
 from typing import Callable
@@ -14,7 +14,8 @@ def linear_layer_triton_wrapper(inp: torch.Tensor, ll_layer: nn.Linear, activati
     if bias is not None and bias.dtype == torch.float32:
         bias.data = bias.data.half()
     
-    return linear_layer_triton(inp, weight, bias, activation)
+    llt = LinearLayerTriton(weight, bias, activation)
+    return llt(inp)
 
 torch.fx.wrap("linear_layer_triton_wrapper")
 

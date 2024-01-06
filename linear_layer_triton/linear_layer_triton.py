@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 from triton.ops.matmul_perf_model import early_config_prune, estimate_matmul_time
 from torch.cuda.amp import custom_fwd
-
+import torch.nn as nn
 from activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_relu_triton, gelu_triton, fast_gelu_triton
 
 # `triton.jit`'ed functions can be auto-tuned by using the `triton.autotune` decorator, which consumes:
@@ -164,7 +164,7 @@ def compute_linear_layer_triton(inp: torch.Tensor, weight: torch.Tensor, bias: O
 
     return out
 
-class LinearLayerTriton(torch.autograd.Function):
+class linear_layer_triton(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: torch.autograd.function.FunctionCtx, inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
@@ -172,5 +172,15 @@ class LinearLayerTriton(torch.autograd.Function):
         out = compute_linear_layer_triton(inp, weight, bias, activation)
         return out
     
-def linear_layer_triton(inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
-    return LinearLayerTriton.apply(inp, weight, bias, activation)
+# def linear_layer_triton(inp: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str="") -> torch.Tensor:
+#     return LinearLayerTriton.apply(inp, weight, bias, activation)
+
+class LinearLayerTriton(nn.Module):
+    def __init__(self, weight: torch.Tensor, bias: Optional[torch.Tensor], activation: str=""):
+        super().__init__()
+        self.weight = weight
+        self.bias = bias
+        self.activation = activation
+
+    def forward(self, inp: torch.Tensor):
+        return linear_layer_triton.apply(inp, self.weight, self.bias, self.activation)
