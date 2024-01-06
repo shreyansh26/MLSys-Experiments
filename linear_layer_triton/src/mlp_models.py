@@ -58,8 +58,7 @@ class MLP5(nn.Module):
     def forward(self, x):
         hidden_gelu = self.gelu(self.ll1(x))
         hidden_linear = self.ll2(x)
-        x = hidden_linear * hidden_gelu
+        x = hidden_gelu * hidden_linear
         x = self.dropout(x)
         x = self.ll3(x)
         return x
-    
