@@ -1,10 +1,10 @@
 import torch
-from linear_layer_triton import linear_layer_triton
+from linear_layer_triton import LinearLayerTriton
 import time
 
 torch.manual_seed(0)
 
-ACTIVATION = "gelu"
+ACTIVATION = "fast_gelu"
 ADD_BIAS = True
 
 x = torch.randn((1000, 1024), device='cuda', dtype=torch.float16)
@@ -27,17 +27,18 @@ if ACTIVATION == "fast_gelu":
 weight = ll_layer.weight
 bias = ll_layer.bias
 
+linear_layer_triton = LinearLayerTriton(weight, bias, activation=ACTIVATION)
+
 for i in range(10):
     _ = act(ll_layer(x))
-    _ = linear_layer_triton(x, weight, bias)
-    _ = linear_layer_triton(x, weight, bias, activation=ACTIVATION)
+    _ = linear_layer_triton(x)
 
 print("Warmup (for Torch) & Compilation (for Triton) done!")
 
 triton_time = 0
 for i in range(10):
     t1 = time.time_ns()
-    triton_output = linear_layer_triton(x, weight, bias, activation=ACTIVATION)
+    triton_output = linear_layer_triton(x)
     t2 = time.time_ns()
     triton_time += (t2 - t1)
 

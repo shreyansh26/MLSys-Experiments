@@ -6,7 +6,7 @@ from patch_linear_layer import patch_linear_layer
 # from torch.fx import symbolic_trace
 from transformers.utils.fx import symbolic_trace
 
-NUM_ITERS = 100
+NUM_ITERS = 1000
 MODEL_NAME = "google/flan-t5-base"
 # MODEL_NAME = "t5-small"
 
@@ -22,9 +22,9 @@ gm_old = copy.deepcopy(gm)
 
 patch_linear_layer(gm, debug=False)
 
-# print(gm_old.code)
-# print("**"*100)
-# print(gm.code)
+print(gm_old.code)
+print("**"*100)
+print(gm.code)
 
 input_ids = tokenizer("The <extra_id_0> walks in <extra_id_1> park", return_tensors="pt").input_ids.to("cuda")
 labels = tokenizer("<extra_id_0> cute dog <extra_id_1> the <extra_id_2>", return_tensors="pt").input_ids.to("cuda")
