@@ -1,4 +1,4 @@
-from mlp_models import MLP1, MLP2
+from src.mlp_models import MLP1, MLP2
 from torch.fx import symbolic_trace, subgraph_rewriter
 
 gm = symbolic_trace(MLP1())

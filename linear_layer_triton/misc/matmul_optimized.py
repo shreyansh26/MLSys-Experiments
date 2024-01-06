@@ -2,7 +2,7 @@ import torch
 
 import triton
 import triton.language as tl
-from activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_relu_triton, gelu_triton, fast_gelu_triton
+from src.activation_fns import tanh_triton, sigmoid_triton, relu_triton, leaky_relu_triton, gelu_triton, fast_gelu_triton
 
 # `triton.jit`'ed functions can be auto-tuned by using the `triton.autotune` decorator, which consumes:
 #   - A list of `triton.Config` objects that define different configurations of
