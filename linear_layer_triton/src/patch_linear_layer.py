@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from linear_layer_triton import LinearLayerTriton
+from src.linear_layer_triton import LinearLayerTriton
 from torch.fx import GraphModule
-import utils
+import src.utils as utils
 from typing import Callable
 
 def linear_layer_triton_wrapper(inp: torch.Tensor, ll_layer: nn.Linear, activation=""):

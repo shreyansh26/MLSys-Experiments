@@ -1,8 +1,8 @@
 import time
 import torch
 import copy
-from mlp_models import MLP1, MLP2, MLP3
-from patch_linear_layer import patch_linear_layer
+from src.mlp_models import MLP1, MLP2, MLP3
+from src.patch_linear_layer import patch_linear_layer
 from torch.fx import symbolic_trace
 
 model = MLP3().to('cuda')
