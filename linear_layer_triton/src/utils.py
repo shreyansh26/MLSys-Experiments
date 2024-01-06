@@ -9,20 +9,42 @@ from torch.fx._compatibility import compatibility
 from typing import Any, Callable, Dict, List, Tuple, NamedTuple, Optional, Set, Union, Iterable
 import torch
 
-def check_args_are_equal(args1: Union[List, Tuple], args2: Union[List, Tuple]) -> bool:
-    if len(args1) != len(args2):
+def compare_static_args(arg1, arg2):
+    if type(arg1) != type(arg2):
         return False
-
-    for a1, a2 in zip(args1, args2):
-        if isinstance(a1, Node) and isinstance(a2, Node):
-            matched = True
-        elif isinstance(a1, (list, tuple)) and isinstance(a2, (list, tuple)):
-            matched = check_args_are_equal(a1, a2)
-
-        if not matched:
+    if isinstance(arg1, Node) and isinstance(arg2, Node):
+        return True
+    if isinstance(arg1, Iterable):
+        if len(arg1) != len(arg2):
             return False
+        return all([compare_static_args(arg1[j], arg2[j]) for j in range(0, len(arg1))])
+    return arg1 == arg2
 
+
+def static_args_are_equal(pn: Node, gn: Node) -> bool:
+    if len(pn.args) != len(gn.args):
+        return False
+    for i in range(0, len(pn.args)):
+        if not compare_static_args(pn.args[i], gn.args[i]):
+            return False
     return True
+
+# def check_args_are_equal(args1: Union[List, Tuple], args2: Union[List, Tuple]) -> bool:
+#     if len(args1) != len(args2):
+#         return False
+
+#     for a1, a2 in zip(args1, args2):
+#         if isinstance(a1, Node) and isinstance(a2, Node):
+#             matched = True
+#         elif isinstance(a1, (list, tuple)) and isinstance(a2, (list, tuple)):
+#             matched = check_args_are_equal(a1, a2)
+#         else:
+#             matched = self._match_literals(a1, a2, match) or self.ignore_literals
+
+#         if not matched:
+#             return False
+
+#     return True
 
 @compatibility(is_backward_compatible=False)
 @dataclass
@@ -130,10 +152,10 @@ class SubgraphMatcher:
                 return self._match_attributes(pn, gn)
             
             # Handle case of "call_module" and other ops
-            # if not static_args_are_equal(pn, gn):
-            #     return False
-            if not check_args_are_equal(pn.args, gn.args):
+            if not static_args_are_equal(pn, gn):
                 return False
+            # if not check_args_are_equal(pn.args, gn.args):
+            #     return False
 
             if pn.op == "call_module":
                 pn_submodules = dict(pn.graph.owning_module.named_modules())
