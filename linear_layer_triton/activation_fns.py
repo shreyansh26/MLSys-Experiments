@@ -8,11 +8,11 @@ sqrt2 = math.sqrt(2.0)
 
 @triton.jit
 def tanh_triton(x):
-    return tl.libdevice.tanh(x)
+    return 2 * tl.sigmoid(2 * x) - 1
 
 @triton.jit
 def sigmoid_triton(x):
-    return 1 / (1 + tl.libdevice.exp(-1 * x))
+    return tl.sigmoid(x)
 
 @triton.jit
 def relu_triton(x):
