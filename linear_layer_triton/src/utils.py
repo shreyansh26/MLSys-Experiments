@@ -9,26 +9,6 @@ from torch.fx._compatibility import compatibility
 from typing import Any, Callable, Dict, List, Tuple, NamedTuple, Optional, Set, Union, Iterable
 import torch
 
-# def compare_static_args(arg1, arg2):
-#     if type(arg1) != type(arg2):
-#         return False
-#     if isinstance(arg1, Node) and isinstance(arg2, Node):
-#         return True
-#     if isinstance(arg1, Iterable):
-#         if len(arg1) != len(arg2):
-#             return False
-#         return all([compare_static_args(arg1[j], arg2[j]) for j in range(len(arg1))])
-#     return arg1 == arg2
-
-
-# def static_args_are_equal_old(pn: Node, gn: Node) -> bool:
-#     if len(pn.args) != len(gn.args):
-#         return False
-#     for i in range(len(pn.args)):
-#         if not compare_static_args(pn.args[i], gn.args[i]):
-#             return False
-#     return True
-
 def check_args_are_equal(args1: Union[List, Tuple], args2: Union[List, Tuple]) -> bool:
     if len(args1) != len(args2):
         return False
@@ -407,12 +387,19 @@ class ReplacedPatterns:
     # List of nodes that were added into the graph
     replacements: List[Node]
 
-def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
+def _replace_submodules(gm: GraphModule, replacement: torch.nn.Module) -> None:
     gm.delete_all_unused_submodules()
 
     if isinstance(replacement, GraphModule):
         replacement.graph.lint()
 
+    # def try_get_submodule(mod: torch.nn.Module, target: str) -> Optional[torch.nn.Module]:
+    #     try:
+    #         mod_match = mod.get_submodule(target)
+    #         return mod_match
+    #     except AttributeError:
+    #         return None
+        
     def try_get_attr(gm: torch.nn.Module, target: str) -> Optional[Any]:
         module_path, _, attr_name = target.rpartition(".")
         try:
@@ -422,32 +409,23 @@ def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
         attr = getattr(mod, attr_name, None)
         return attr
 
-    # def try_get_submod(gm: torch.nn.Module, target: str) -> Optional[Any]:
-    #     try:
-    #         mod: torch.nn.Module = gm.get_submodule(target)
-    #         return mod
-    #     except AttributeError:
-    #         return None
-
     for node in gm.graph.nodes:
-        if node.op == "get_attr" or node.op == "call_module":
-            gm_attr = try_get_attr(gm, node.target)
-            replacement_attr = try_get_attr(replacement, node.target)
+        if node.op == "call_module" or node.op == "get_attr":
+            module_name = node.target
+            gm_submod = try_get_attr(gm, module_name)
+            replacement_submod = try_get_attr(replacement, module_name)
 
-            # CASE 1: This target already exists as an attribute in our
+            # CASE 1: This target already exists as a submodule in our
             # result GraphModule. Whether or not it exists in
             # `replacement`, the existing submodule takes precedence.
-            if gm_attr is not None:
+            if gm_submod is not None:
                 continue
 
-            # CASE 2: The target exists as an attribute in `replacement`
+            # CASE 2: The target exists as a submodule in `replacement`
             # only, so we need to copy it over.
-            elif replacement_attr is not None:
-                new_attr = copy.deepcopy(replacement_attr)
-                if isinstance(replacement_attr, torch.nn.Module):
-                    gm.add_submodule(node.target, new_attr)
-                else:
-                    setattr(gm, node.target, new_attr)
+            elif replacement_submod is not None:
+                new_submod = copy.deepcopy(getattr(replacement, module_name))
+                gm.add_submodule(module_name, new_submod)
 
             # CASE 3: The target doesn't exist as an attribute in `gm`
             # or `replacement`
@@ -457,35 +435,6 @@ def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
                                    f"with target {node.target}, but "
                                    "the referenced attribute does not "
                                    "exist in the replacement GraphModule")
-        
-        # elif node.op == "call_module":
-        #     gm_submod = try_get_submod(gm, node.target)
-        #     replacement_submod = try_get_submod(replacement, node.target)
-
-        #     # CASE 1: This target already exists as an attribute in our
-        #     # result GraphModule. Whether or not it exists in
-        #     # `replacement`, the existing submodule takes precedence.
-        #     if gm_submod is not None:
-        #         continue
-
-        #     # CASE 2: The target exists as an attribute in `replacement`
-        #     # only, so we need to copy it over.
-        #     elif replacement_submod is not None:
-        #         new_submod = copy.deepcopy(replacement_submod)
-        #         if isinstance(replacement_submod, torch.nn.Module):
-        #             gm.add_submodule(node.target, new_attr)
-        #         else:
-        #             setattr(gm, node.target, new_attr)
-
-        #     # CASE 3: The target doesn't exist as an attribute in `gm`
-        #     # or `replacement`
-        #     else:
-        #         raise RuntimeError("Attempted to create a \"", node.op,
-        #                            "\" node during subgraph rewriting "
-        #                            f"with target {node.target}, but "
-        #                            "the referenced attribute does not "
-        #                            "exist in the replacement GraphModule")
-
 
     gm.graph.lint()
 
@@ -635,60 +584,34 @@ def replace_pattern_with_filters(
     return _replace_pattern(gm, pattern, replacement, match_filters, ignore_literals)
 
 
-def _replace_pattern(
-    gm: GraphModule,
-    pattern: Union[Callable, Graph, GraphModule],
-    replacement: Union[Callable, Graph, GraphModule],
-    match_filters: Optional[List[Callable[["InternalMatch", Graph, Graph], bool]]] = None,  # type: ignore[name-defined]
-    ignore_literals: bool = False,
-) -> List[ReplacedPatterns]:
-    if match_filters is None:
-        match_filters = []
-
+def _replace_pattern(gm: GraphModule, pattern: Callable, replacement: Callable) -> List[Match]:
     # Get the graphs for `gm`, `pattern`, `replacement`
     original_graph: Graph = gm.graph
+    pattern_graph: Graph = symbolic_trace(pattern).graph
 
-    if isinstance(pattern, GraphModule):
-        pattern_graph = pattern.graph
-    elif isinstance(pattern, Graph):
-        pattern_graph = pattern
-    else:
-        pattern_graph = symbolic_trace(pattern).graph
-
-    if isinstance(replacement, GraphModule):
-        replacement_graph = replacement.graph
-    elif isinstance(replacement, Graph):
-        replacement_graph = replacement
-    else:
-        replacement_graph = symbolic_trace(replacement).graph
-
-    matcher = SubgraphMatcher(pattern_graph, match_output=False, match_placeholder=False,
-                              remove_overlapping_matches=True, ignore_literals=ignore_literals)
+    matcher = SubgraphMatcher(
+        pattern_graph, match_output=False, match_placeholder=False, remove_overlapping_matches=True
+    )
     _matches: List[InternalMatch] = matcher.match(original_graph)
-
-    # Filter out matches that don't match the filter
-    _matches = [
-        m for m in _matches
-        if all(match_filter(m, original_graph, pattern_graph)
-               for match_filter in match_filters)
-    ]
-
-    replacement_placeholders = [n for n in replacement_graph.nodes if n.op == "placeholder"]
 
     # As we progressively replace nodes, we'll need to keep track of how the match results should change
     match_changed_node: Dict[Node, Node] = {}
 
-    match_and_replacements = []
+    replacement_graph_module: GraphModule = symbolic_trace(replacement)
     for match in _matches:
+        replacement_graph = copy.deepcopy(replacement_graph_module).graph
+        replacement_placeholders = [n for n in replacement_graph.nodes if n.op == "placeholder"]
+
+        # CHANGE HERE
+        # We ensure we use the original modules
         for node in replacement_graph.nodes:
-            if node.op == "get_attr" or node.op == "call_module":
+            if node.op == "call_module" or node.op == "get_attr":
                 submodule_name = node.target
                 if node.op == "get_attr":
-                    _, _, submodule_name = node.target.rpartition(".")
+                    submodule_name = node.target.split(".")[0]
                 if submodule_name in match.modules_map:
                     to_replace = match.modules_map[submodule_name]
                     node.target = node.target.replace(submodule_name, to_replace, 1)
-                    
         # Build connecting between replacement graph's input and original graph input producer node
 
         # Initialize `val_map` with mappings from placeholder nodes in
@@ -696,16 +619,7 @@ def _replace_pattern(
         assert len(match.placeholder_nodes) == len(replacement_placeholders)
         val_map: Dict[Node, Node] = {}
         for rn, gn in zip(replacement_placeholders, match.placeholder_nodes):
-            if isinstance(gn, Node):
-                val_map[rn] = match_changed_node.get(gn, gn)
-                if gn != val_map[rn]:
-                    # Update match.placeholder_nodes and match.nodes_map with the node that replaced gn
-                    gn_ind = match.placeholder_nodes.index(gn)
-                    match.placeholder_nodes[gn_ind] = match_changed_node[gn]
-                    map_key = list(match.nodes_map.keys())[list(match.nodes_map.values()).index(gn)]
-                    match.nodes_map[map_key] = match_changed_node[gn]
-            else:
-                val_map[rn] = gn
+            val_map[rn] = match_changed_node.get(gn, gn)
 
         # Copy the replacement graph over
         user_nodes: Set[Node] = set()
@@ -715,7 +629,7 @@ def _replace_pattern(
         assert user_nodes, "The returning_nodes should have at least one user node"
 
         if len(user_nodes) == 1:
-            first_user_node = next(iter(user_nodes))
+            first_user_node = list(user_nodes)[0]
         else:
             # If there are multiple user nodes, we need to find the first user node
             # in the current execution order of the `original_graph`
@@ -728,10 +642,7 @@ def _replace_pattern(
             copied_returning_nodes = original_graph.graph_copy(replacement_graph, val_map)
 
         if isinstance(copied_returning_nodes, Node):
-            copied_returning_nodes = (copied_returning_nodes, )
-
-        # Get a list of nodes that have been replaced into the graph
-        replacement_nodes: List[Node] = [v for v in val_map.values() if v not in match.placeholder_nodes]
+            copied_returning_nodes = (copied_returning_nodes,)
 
         # Hook the output Node of the replacement subgraph in to the
         # original Graph at the correct location
@@ -745,14 +656,6 @@ def _replace_pattern(
                 gn = match.nodes_map[node]
                 gm.graph.erase_node(gn)
 
-        match_and_replacements.append(
-            ReplacedPatterns(
-                anchor=match.anchors[0],
-                nodes_map=match.nodes_map,
-                replacements=replacement_nodes
-            )
-        )
-
     # Update the passed-in GraphModule to reflect the new state of
     # `original_graph`
     gm.recompile()
@@ -760,6 +663,8 @@ def _replace_pattern(
     # If `replacement` was an nn.Module, we'll need to make sure that
     # all the submodules have been copied over correctly
     if isinstance(replacement, torch.nn.Module):
-        _replace_attributes(gm, replacement)
+        _replace_submodules(gm, replacement)
 
-    return match_and_replacements
+    # Convert _matches: InternalMatch to Match to comply with backward compatibility of this function
+    matches: List[Match] = [Match(anchor=match.anchors[0], nodes_map=match.nodes_map) for match in _matches]
+    return matches
