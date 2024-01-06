@@ -13,7 +13,7 @@ def linear_layer_triton_wrapper(inp: torch.Tensor, ll_layer: nn.Linear, activati
         weight.data = weight.data.half()
     if bias is not None and bias.dtype == torch.float32:
         bias.data = bias.data.half()
-    
+    # print(inp.shape, weight.shape)
     llt = LinearLayerTriton(weight, bias, activation)
     return llt(inp)
 
