@@ -1,7 +1,7 @@
 import time
 import torch
 import copy
-from src.mlp_models import MLP1, MLP2, MLP3, MLP4, MLP5, MLP6
+from src.mlp_models import MLP1, MLP2, MLP3, MLP4, MLP5
 from src.patch_linear_layer import patch_linear_layer
 from torch.fx import symbolic_trace
 
@@ -21,11 +21,14 @@ patch_linear_layer(gm, debug=DEBUG)
 
 x = torch.randn((1000, 1024), device='cuda', dtype=torch.float16)
 
+torch.cuda.synchronize()
+
 for i in range(NUM_ITERS):
-    _ = gm_old(x)
     _ = gm(x)
 
-print("Warmup (for Torch) & Compilation (for Triton) done!")
+print("Compilation (for Triton) done!")
+
+torch.cuda.synchronize()
 
 triton_time = 0
 for i in range(NUM_ITERS):
@@ -33,8 +36,16 @@ for i in range(NUM_ITERS):
     triton_output = gm(x)
     t2 = time.time_ns()
     triton_time += (t2 - t1)
+    torch.cuda.synchronize()
 
 triton_time = triton_time / NUM_ITERS / 1_000_000   
+
+for i in range(NUM_ITERS):
+    _ = gm_old(x)
+
+print("Warmup (for Torch) done!")
+
+torch.cuda.synchronize()
 
 torch_time = 0
 for i in range(NUM_ITERS):
@@ -42,6 +53,7 @@ for i in range(NUM_ITERS):
     torch_output = gm_old(x)
     t2 = time.time_ns()
     torch_time += (t2 - t1)
+    torch.cuda.synchronize()
 
 torch_time = torch_time / NUM_ITERS / 1_000_000   
 
