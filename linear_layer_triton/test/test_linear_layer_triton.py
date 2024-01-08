@@ -37,21 +37,21 @@ print("Warmup (for Torch) & Compilation (for Triton) done!")
 
 triton_time = 0
 for i in range(10):
-    t1 = time.time_ns()
+    t1 = time.perf_counter()
     triton_output = linear_layer_triton(x)
-    t2 = time.time_ns()
+    t2 = time.perf_counter()
     triton_time += (t2 - t1)
 
-triton_time = triton_time / 10 / 1_000_000   
+triton_time = triton_time / 10 * 1_000_000   
 
 torch_time = 0
 for i in range(10):
-    t1 = time.time_ns()
+    t1 = time.perf_counter()
     torch_output = act(ll_layer(x))
-    t2 = time.time_ns()
+    t2 = time.perf_counter()
     torch_time += (t2 - t1)
 
-torch_time = torch_time / 10 / 1_000_000   
+torch_time = torch_time / 10 * 1_000_000   
 
 print(f"Triton time: {triton_time}ms")
 print(f"Torch time: {torch_time}ms")

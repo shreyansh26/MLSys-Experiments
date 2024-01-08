@@ -32,13 +32,13 @@ torch.cuda.synchronize()
 
 triton_time = 0
 for i in range(NUM_ITERS):
-    t1 = time.time_ns()
+    t1 = time.perf_counter()
     triton_output = gm(x)
-    t2 = time.time_ns()
+    t2 = time.perf_counter()
     triton_time += (t2 - t1)
     torch.cuda.synchronize()
 
-triton_time = triton_time / NUM_ITERS / 1_000_000   
+triton_time = triton_time / NUM_ITERS * 1_000_000   
 
 for i in range(NUM_ITERS):
     _ = gm_old(x)
@@ -49,13 +49,13 @@ torch.cuda.synchronize()
 
 torch_time = 0
 for i in range(NUM_ITERS):
-    t1 = time.time_ns()
+    t1 = time.perf_counter()
     torch_output = gm_old(x)
-    t2 = time.time_ns()
+    t2 = time.perf_counter()
     torch_time += (t2 - t1)
     torch.cuda.synchronize()
 
-torch_time = torch_time / NUM_ITERS / 1_000_000   
+torch_time = torch_time / NUM_ITERS * 1_000_000      
 
 print(f"Triton time: {triton_time}ms")
 print(f"Torch time: {torch_time}ms")
