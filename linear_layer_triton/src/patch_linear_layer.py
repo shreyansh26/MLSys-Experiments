@@ -153,4 +153,4 @@ def patch_linear_layer(gm: GraphModule, debug: bool=False):
     replace_linear_layer2(gm, NewGELUActivation(), "fast_gelu", debug=debug)
     replace_linear_layer2(gm, torch.nn.GELU(), "fast_gelu", debug=debug)
     replace_linear_layer2(gm, torch.nn.ReLU(), "relu", debug=debug)
-    # replace_linear_layer1(gm, debug=debug)
+    replace_linear_layer1(gm, debug=debug)
