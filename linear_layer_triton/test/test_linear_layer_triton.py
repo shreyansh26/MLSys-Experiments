@@ -7,8 +7,9 @@ torch.manual_seed(0)
 ACTIVATION = "fast_gelu"
 ADD_BIAS = True
 
-x = torch.randn((1000, 1024), device='cuda', dtype=torch.float16)
-ll_layer = torch.nn.Linear(1024, 512, bias=ADD_BIAS, dtype=torch.float16).to("cuda")
+# Can use torch.float16 as well
+x = torch.randn((1000, 1024), device='cuda', dtype=torch.float32)
+ll_layer = torch.nn.Linear(1024, 512, bias=ADD_BIAS, dtype=torch.float32).to("cuda")
 act = torch.nn.Identity()
 
 if ACTIVATION == "tanh":
@@ -58,7 +59,25 @@ print(f"Torch time: {torch_time}ms")
 
 try:
     torch.testing.assert_close(triton_output, torch_output, atol=1e-2, rtol=0)
-    print("✅ Triton and Torch match!")
+    print("✅ (Forward pass) Triton and Torch match!")
 except Exception as e:
     print(e)
-    print("❌ Triton and Torch differ!")
+    print("❌ (Forward pass) Triton and Torch differ!")
+
+triton_loss = triton_output.sum()
+triton_loss.backward()
+triton_weight_grad = linear_layer_triton.weight.grad
+
+torch_loss = torch_output.sum()
+torch_loss.backward()
+torch_weight_grad = ll_layer.weight.grad
+
+print(triton_weight_grad)
+print(torch_weight_grad)
+
+try:
+    torch.testing.assert_close(triton_weight_grad, torch_weight_grad, atol=1e-2, rtol=0)
+    print("✅ (Backward pass) Triton and Torch match!")
+except Exception as e:
+    print(e)
+    print("❌ (Backward pass) Triton and Torch differ!")
