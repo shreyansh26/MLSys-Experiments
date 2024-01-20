@@ -74,8 +74,12 @@ def linear_layer_triton_fwd_kernel(
     # `a_ptrs` is a block of [BLOCK_M, BLOCK_K] pointers
     # `b_ptrs` is a block of [BLOCK_K, BLOCK_N] pointers
     # Refer "Pointer Arithmetics" (https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html#pointer-arithmetics)
-    offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
-    offs_bn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    # offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
+    # offs_bn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    offs_m = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
+    offs_n = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    offs_am = tl.max_contiguous(tl.multiple_of(offs_m, BLOCK_M), BLOCK_M)
+    offs_bn = tl.max_contiguous(tl.multiple_of(offs_n, BLOCK_N), BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
     a_ptrs = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak) # Row-major
     b_ptrs = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn) # Column-major
