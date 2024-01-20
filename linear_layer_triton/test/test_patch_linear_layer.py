@@ -21,41 +21,39 @@ patch_linear_layer(gm, debug=DEBUG)
 
 x = torch.randn((1000, 1024), device='cuda', dtype=torch.float16)
 
-torch.cuda.synchronize()
+start = torch.cuda.Event(enable_timing=True)
+end = torch.cuda.Event(enable_timing=True)
 
 for i in range(NUM_ITERS):
     _ = gm(x)
 
 print("Compilation (for Triton) done!")
 
-torch.cuda.synchronize()
-
-triton_time = 0
 for i in range(NUM_ITERS):
-    t1 = time.perf_counter()
     triton_output = gm(x)
-    t2 = time.perf_counter()
-    triton_time += (t2 - t1)
-    torch.cuda.synchronize()
 
-triton_time = triton_time / NUM_ITERS * 1_000_000   
+start.record()
+triton_output = gm(x)
+end.record()
+torch.cuda.synchronize()
+triton_time = start.elapsed_time(end)
 
 for i in range(NUM_ITERS):
     _ = gm_old(x)
 
 print("Warmup (for Torch) done!")
 
-torch.cuda.synchronize()
+start2 = torch.cuda.Event(enable_timing=True)
+end2 = torch.cuda.Event(enable_timing=True)
 
-torch_time = 0
 for i in range(NUM_ITERS):
-    t1 = time.perf_counter()
     torch_output = gm_old(x)
-    t2 = time.perf_counter()
-    torch_time += (t2 - t1)
-    torch.cuda.synchronize()
 
-torch_time = torch_time / NUM_ITERS * 1_000_000      
+start2.record()
+torch_output = gm_old(x)
+end2.record()
+torch.cuda.synchronize()
+torch_time = start2.elapsed_time(end2)      
 
 print(f"Triton time: {triton_time}ms")
 print(f"Torch time: {torch_time}ms")

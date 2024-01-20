@@ -4,7 +4,7 @@ import time
 
 torch.manual_seed(0)
 
-ACTIVATION = "fast_gelu"
+ACTIVATION = "gelu"
 ADD_BIAS = True
 
 # Can use torch.float16 as well
@@ -36,23 +36,29 @@ for i in range(10):
 
 print("Warmup (for Torch) & Compilation (for Triton) done!")
 
-triton_time = 0
+start = torch.cuda.Event(enable_timing=True)
+end = torch.cuda.Event(enable_timing=True)
+
 for i in range(10):
-    t1 = time.perf_counter()
     triton_output = linear_layer_triton(x)
-    t2 = time.perf_counter()
-    triton_time += (t2 - t1)
 
-triton_time = triton_time / 10 * 1_000_000   
+start.record()
+triton_output = linear_layer_triton(x)
+end.record()
+torch.cuda.synchronize()
+triton_time = start.elapsed_time(end)
 
-torch_time = 0
+start2 = torch.cuda.Event(enable_timing=True)
+end2 = torch.cuda.Event(enable_timing=True)
+
 for i in range(10):
-    t1 = time.perf_counter()
     torch_output = act(ll_layer(x))
-    t2 = time.perf_counter()
-    torch_time += (t2 - t1)
 
-torch_time = torch_time / 10 * 1_000_000   
+start2.record()
+torch_output = act(ll_layer(x))
+end2.record()
+torch.cuda.synchronize()
+torch_time = start2.elapsed_time(end2)  
 
 print(f"Triton time: {triton_time}ms")
 print(f"Torch time: {torch_time}ms")
