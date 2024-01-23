@@ -9,7 +9,7 @@ This repository contains -
 * Also includes a fusion step wherein an activation (optional) is within the Triton kernel [src/kernels](src/kernels)
 * Automated patching of nn.LinearLayer layers to the new Triton layers [src/patch_linear_layer.py](src/patch_linear_layer.py)
 * Benchmarking and testing [test/](test/)
-* Examples of using the automated patching for training (custom DNN for MNIST and FlanT5-Base on Samsum) and inference (FLanT5-Base) [examples/](examples/)
+* Examples of using the custom LinearLayer for training (custom DNN for MNIST and FlanT5-Base on Samsum) and inference (FLanT5-Base) [examples/](examples/)
 * Optimized patching using CUDA Graphs (only for inference for now) [misc/patch_model.py](misc/patch_model.py)
 
 On training of FlanT5-Base on Samsum dataset, using the Triton LinearLayer (with fusion) results in upto 1.6x speedup.
