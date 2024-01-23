@@ -1,8 +1,8 @@
 #include <cuda.h>
 #include <stdio.h>
 
-// in_mat is M X N matrix and in_vec is N dim vector
-// out_vec is M dim vector
+// A is M X K matrix and B is K x N matrix
+// O is M x N matrix
 __global__
 void matmul_kernel(float* O, float* A, float* B, int M, int K, int N) {
     int c = blockIdx.x * blockDim.x + threadIdx.x;
