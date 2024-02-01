@@ -1,0 +1,11 @@
+apex==0.9.10dev
+datasets==2.16.1
+evaluate==0.4.0
+flash_attn==2.4.2
+huggingface_hub==0.20.2
+nltk==3.8.1
+numpy==1.23.5
+torch==2.0.1
+torchvision==0.15.2
+transformers==4.34.0
+triton==2.0.0
