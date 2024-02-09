@@ -1,0 +1,16 @@
+NVCC        = /usr/bin/nvcc
+NVCC_FLAGS  = -O3 -I/usr/include
+LD_FLAGS    = -lcudart -L/usr/lib64
+EXE	        = tiled_smem
+OBJ	        = tiled_smem.o
+
+default: $(EXE)
+
+tiled_smem.o: tiled_smem.cu
+	$(NVCC) -c -o $@ tiled_smem.cu $(NVCC_FLAGS)
+
+$(EXE): $(OBJ)
+	$(NVCC) $(OBJ) -o $(EXE) $(LD_FLAGS)
+
+clean:
+	rm -rf *.o $(EXE)
