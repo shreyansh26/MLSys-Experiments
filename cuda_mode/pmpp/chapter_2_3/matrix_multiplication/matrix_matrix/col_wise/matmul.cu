@@ -27,6 +27,10 @@ void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
     float *A_d; 
     float *B_d;
 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
     cudaMalloc((void **)&O_d, M*N*sizeof(float));
     cudaMalloc((void **)&A_d, M*K*sizeof(float));
     cudaMalloc((void **)&B_d, K*N*sizeof(float));
@@ -37,9 +41,16 @@ void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
     dim3 blockSize(32);
     dim3 gridSize(cdiv(N, blockSize.x));
 
+    cudaEventRecord(start);
     matmul_kernel<<<gridSize, blockSize>>>(O_d, A_d, B_d, M, K, N);
+    cudaEventRecord(stop);
 
     cudaMemcpy(O_h, O_d, M*N*sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    printf("Time taken: %f ms\n", milliseconds);
 
     cudaFree(O_d);
     cudaFree(A_d);
@@ -47,9 +58,12 @@ void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
 }
 
 int main() {
-    int M = 64;
-    int K = 64;
-    int N = 128;
+    // int M = 64;
+    // int K = 64;
+    // int N = 128;
+    int M = 1024;
+    int K = 1024;
+    int N = 1024;
 
     float  *mat1 = new float[M*K];
     float  *mat2 = new float[K*N];
@@ -67,14 +81,14 @@ int main() {
 
     matmul(out, mat1, mat2, M, K, N);
 
-    for(int i=0; i<M; i++) {
-        for(int j=0; j<N; j++) {
-            if(j > 0)
-                printf(", ");
-            printf("%8.3f", out[i*N+j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
+    // for(int i=0; i<M; i++) {
+    //     for(int j=0; j<N; j++) {
+    //         if(j > 0)
+    //             printf(", ");
+    //         printf("%8.3f", out[i*N+j]);
+    //     }
+    //     printf("\n");
+    // }
+    // printf("\n");
     return 0;
 }

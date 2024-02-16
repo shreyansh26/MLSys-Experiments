@@ -1,7 +1,7 @@
 
-NVCC        = /usr/local/cuda/bin/nvcc
-NVCC_FLAGS  = -O3 -I/usr/local/cuda/include
-LD_FLAGS    = -lcudart -L/usr/local/cuda/lib64
+NVCC        = /usr/bin/nvcc
+NVCC_FLAGS  = -O3 -I/usr/include
+LD_FLAGS    = -lcudart -L/usr/lib64
 EXE	        = matmul
 OBJ	        = matmul.o
 
