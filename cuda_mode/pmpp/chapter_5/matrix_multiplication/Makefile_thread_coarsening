@@ -1,0 +1,16 @@
+NVCC        = /usr/bin/nvcc
+NVCC_FLAGS  = -O3 -I/usr/include
+LD_FLAGS    = -lcudart -L/usr/lib64
+EXE	        = thread_coarsening
+OBJ	        = thread_coarsening.o
+
+default: $(EXE)
+
+thread_coarsening.o: thread_coarsening.cu
+	$(NVCC) -c -o $@ thread_coarsening.cu $(NVCC_FLAGS)
+
+$(EXE): $(OBJ)
+	$(NVCC) $(OBJ) -o $(EXE) $(LD_FLAGS)
+
+clean:
+	rm -rf *.o $(EXE)
