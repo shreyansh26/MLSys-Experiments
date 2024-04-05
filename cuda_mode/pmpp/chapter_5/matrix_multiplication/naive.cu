@@ -21,10 +21,14 @@ inline unsigned int cdiv(unsigned int a, unsigned int b) {
     return (a + b - 1)/b;
 }
 
-void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
+void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N, bool bench=true) {
     float *O_d;
     float *A_d; 
     float *B_d;
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
     cudaMalloc((void **)&O_d, M*N*sizeof(float));
     cudaMalloc((void **)&A_d, M*K*sizeof(float));
@@ -36,9 +40,22 @@ void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
     dim3 blockSize(32, 32);
     dim3 gridSize(cdiv(N, blockSize.x), cdiv(M, blockSize.y));
 
+    if(bench) {
+        for(int i=0; i<20; i++) {
+            matmul_kernel<<<gridSize, blockSize>>>(O_d, A_d, B_d, M, K, N);
+        }
+    }
+
+    cudaEventRecord(start);
     matmul_kernel<<<gridSize, blockSize>>>(O_d, A_d, B_d, M, K, N);
+    cudaEventRecord(stop);
 
     cudaMemcpy(O_h, O_d, M*N*sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    printf("Time taken: %f ms\n", milliseconds);
 
     cudaFree(O_d);
     cudaFree(A_d);
@@ -46,9 +63,9 @@ void matmul(float* O_h, float* A_h, float* B_h, int M, int K, int N) {
 }
 
 int main() {
-    int M = 64;
-    int K = 64;
-    int N = 128;
+    int M = 2048;
+    int K = 2047;
+    int N = 2048;
 
     float  *mat1 = new float[M*K];
     float  *mat2 = new float[K*N];
@@ -66,14 +83,24 @@ int main() {
 
     matmul(out, mat1, mat2, M, K, N);
 
-    for(int i=0; i<M; i++) {
-        for(int j=0; j<N; j++) {
-            if(j > 0)
-                printf(", ");
-            printf("%8.3f", out[i*N+j]);
-        }
-        printf("\n");
-    }
+    // for(int i=0; i<M; i++) {
+    //     for(int j=0; j<K; j++) {
+    //         if(j > 0)
+    //             printf(", ");
+    //         printf("%8.3f", mat1[i*K+j]);
+    //     }
+    //     printf("\n");
+    // }
+    // printf("\n");
+
+    // for(int i=0; i<M; i++) {
+    //     for(int j=0; j<N; j++) {
+    //         if(j > 0)
+    //             printf(", ");
+    //         printf("%8.3f", out[i*N+j]);
+    //     }
+    //     printf("\n");
+    // }
     printf("\n");
     return 0;
 }
