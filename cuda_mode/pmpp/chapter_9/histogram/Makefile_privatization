@@ -1,0 +1,16 @@
+NVCC        = /usr/bin/nvcc
+NVCC_FLAGS  = -O3 -I/usr/include
+LD_FLAGS    = -lcudart -L/usr/lib64
+EXE	        = privatization
+OBJ	        = privatization.o
+
+default: $(EXE)
+
+privatization.o: privatization.cu
+	$(NVCC) -c -o $@ privatization.cu $(NVCC_FLAGS)
+
+$(EXE): $(OBJ)
+	$(NVCC) $(OBJ) -o $(EXE) $(LD_FLAGS)
+
+clean:
+	rm -rf *.o $(EXE)
