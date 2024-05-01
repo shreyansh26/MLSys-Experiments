@@ -35,7 +35,7 @@ __global__ void segmented_coarsening_reduce_sum_kernel(float* input, float* outp
 }
 
 __device__ float atomicMaxf(float* address, float val) {
-    int *address_as_int =(int*)address;
+    int *address_as_int = (int*)address;
     int old = *address_as_int, assumed;
     while (val > __int_as_float(old)) {
         assumed = old;
