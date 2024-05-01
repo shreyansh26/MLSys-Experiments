@@ -1,0 +1,16 @@
+NVCC        = /usr/bin/nvcc
+NVCC_FLAGS  = -O3 -G -I/usr/include
+LD_FLAGS    = -lcudart -L/usr/lib64
+EXE	        = reduce_segment_smem_coarsening_variable
+OBJ	        = reduce_segment_smem_coarsening_variable.o
+
+default: $(EXE)
+
+reduce_segment_smem_coarsening_variable.o: reduce_segment_smem_coarsening_variable.cu
+	$(NVCC) -c -o $@ reduce_segment_smem_coarsening_variable.cu $(NVCC_FLAGS)
+
+$(EXE): $(OBJ)
+	$(NVCC) $(OBJ) -o $(EXE) $(LD_FLAGS)
+
+clean:
+	rm -rf *.o $(EXE)
