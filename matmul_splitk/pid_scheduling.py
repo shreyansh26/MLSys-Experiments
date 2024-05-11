@@ -143,16 +143,16 @@ grouped[(BLOCKS_M * BLOCKS_N,)](x, out1, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, GROUP
 print(out1.cpu().numpy())
 
 print("Swizzle-2d (same as grouped) with 1D grid scheduling")
-out1 = z.clone()
-swizzle_k_1d[(BLOCKS_M * BLOCKS_N,)](x, out1, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, GROUP_SIZE_M)
-print(out1.cpu().numpy())
-
-print("Swizzle-2d (same as grouped) with 2D grid scheduling")
 out2 = z.clone()
-swizzle_k_2d[(BLOCKS_M, BLOCKS_N)](x, out2, GROUP_SIZE_M)
+swizzle_k_1d[(BLOCKS_M * BLOCKS_N,)](x, out2, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, GROUP_SIZE_M)
 print(out2.cpu().numpy())
 
-print("Column Major scheduling")
+print("Swizzle-2d (same as grouped) with 2D grid scheduling")
 out3 = z.clone()
-column_major[(BLOCKS_M * BLOCKS_N,)](x, out3, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N)
+swizzle_k_2d[(BLOCKS_M, BLOCKS_N)](x, out3, GROUP_SIZE_M)
 print(out3.cpu().numpy())
+
+print("Column Major scheduling")
+out4 = z.clone()
+column_major[(BLOCKS_M * BLOCKS_N,)](x, out4, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N)
+print(out4.cpu().numpy())
