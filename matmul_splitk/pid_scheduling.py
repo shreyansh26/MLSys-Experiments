@@ -4,7 +4,6 @@ import triton.language as tl
 import numpy as np
 from triton_util import get_1d_offset, get_2d_offset, get_2d_mask
 
-TOTAL_PROGRAMS = 16
 M = 8
 N = 8
 GROUP_SIZE_M = 2
@@ -35,7 +34,7 @@ def col_major(pid, m, n, block_m: tl.constexpr, block_n: tl.constexpr):
     grid_m = tl.cdiv(m, block_m)
     grid_n = tl.cdiv(n, block_n)
 
-    pid_m = (pid % grid_n)
+    pid_m = (pid % grid_m)
     pid_n = pid // grid_m
 
     return pid_m, pid_n
