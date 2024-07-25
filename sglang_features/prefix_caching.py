@@ -1,5 +1,5 @@
 '''
-CUDA_VISIBLE_DEVICES=1 HUGGING_FACE_HUB_TOKEN=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 python -m sglang.launch_server --model-path meta-llama/Meta-Llama-3-8B-Instruct --port 30000 --enable-torch-compile  --disable-cuda-graph
+CUDA_VISIBLE_DEVICES=1 HUGGING_FACE_HUB_TOKEN=<hf_token> python -m sglang.launch_server --model-path meta-llama/Meta-Llama-3-8B-Instruct --port 30000 --enable-torch-compile  --disable-cuda-graph
 '''
 import requests
 from transformers import AutoTokenizer
