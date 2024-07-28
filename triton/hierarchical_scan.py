@@ -64,8 +64,8 @@ assert torch.allclose(y, y_)
 y_large = torch.zeros(2**25).float().cuda()
 x_large = torch.arange(2**25).float().cuda()
 
-# Correctness
-cumsum_block(x_large, y_large, K=128)
+# Correctness - K>=256 works with Triton==3.0.0 and now with 2.3.1
+cumsum_block(x_large, y_large, K=2**10)
 y_large_ = x_large.cumsum(dim=0)
 print(y_large)
 print(y_large_)
@@ -73,7 +73,7 @@ torch.testing.assert_close(y_large, y_large_, atol=1e-4, rtol=1e-4)
 
 # Benchmarking
 
-times = timeit.Timer(partial(cumsum_block, x_large, y_large, 1024)).repeat(3, 1000)
+times = timeit.Timer(partial(cumsum_block, x_large, y_large, 2**10)).repeat(3, 1000)
 print(f"Triton time: {(min(times)/1000)*1000:.3f}ms")
 
 times = timeit.Timer(partial(torch.cumsum, x_large, 0)).repeat(3, 1000)
