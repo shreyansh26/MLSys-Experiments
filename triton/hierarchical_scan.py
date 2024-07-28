@@ -30,29 +30,6 @@ def cumsum_kernel(X, H, Y, K: tl.constexpr):
 
     tl.store(H + Ks*0 + pid, hs, mask=(Ks == K-1))
 
-
-K = 16
-BLOCKS = 8
-SEQLEN = K * BLOCKS
-
-def cumsum(x):
-    y = []
-    h = 0
-    for k in range(len(x)):
-        h = h + x[k]
-        y.append(h)
-    return h, y
-
-h = torch.zeros(BLOCKS).float().cuda()
-x = torch.arange(SEQLEN).float().cuda()
-y = torch.zeros(SEQLEN).float().cuda()
-
-cumsum_kernel[(BLOCKS,)](x, h, y, K)
-
-print(x)
-print(h)
-print(y)
-
 def cumsum_block(x, y, K):
     seqlen = y.shape[0]
     BLOCKS = seqlen // K
@@ -66,16 +43,39 @@ def cumsum_block(x, y, K):
 
     cumsum_kernel[(BLOCKS,)](x, h[1], y, K)
 
-cumsum_block(x, y, K)
-y_ = torch.cumsum(x, dim=0)
-assert torch.allclose(y, y_)
+K = 16
+BLOCKS = 8
+SEQLEN = K * BLOCKS
 
+h = torch.zeros(BLOCKS).float().cuda()
+x = torch.arange(SEQLEN).float().cuda()
+y = torch.zeros(SEQLEN).float().cuda()
+
+cumsum_kernel[(BLOCKS,)](x, h, y, K)
+
+print(x)
+print(h)
+print(y)
+
+cumsum_block(x, y, K)
+y_ = x.cumsum(dim=0)
+assert torch.allclose(y, y_)
 
 y_large = torch.zeros(2**25).float().cuda()
 x_large = torch.arange(2**25).float().cuda()
 
-times = timeit.Timer(partial(cumsum_block, x_large, y_large, K)).repeat(3, 1000)
-print(f"{(min(times)/1000)*1000:.3f}ms")
+# Correctness
+cumsum_block(x_large, y_large, K=16)
+y_large_ = x_large.cumsum(dim=0)
+print(y_large)
+print(y_large_)
+torch.testing.assert_close(y_large, y_large_, atol=1e-4, rtol=1e-4)
 
-y_large_ = torch.cumsum(x_large, dim=0)
-assert torch.allclose(y, y_)
+# Benchmarking
+
+times = timeit.Timer(partial(cumsum_block, x_large, y_large, 2**10)).repeat(3, 1000)
+print(f"Triton time: {(min(times)/1000)*1000:.3f}ms")
+
+times = timeit.Timer(partial(torch.cumsum, x_large, 0)).repeat(3, 1000)
+print(f"Torch time: {(min(times)/1000)*1000:.3f}ms")
+      
