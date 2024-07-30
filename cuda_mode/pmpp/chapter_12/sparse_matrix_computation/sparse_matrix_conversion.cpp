@@ -217,8 +217,17 @@ int main() {
     float abs_tol = 1.0e-3f;
     double rel_tol = 1.0e-2f;
 
+    printf(R"EOF(
+ ## ##   ### ##     ##     ### ##    ## ##   ### ###           ##   ##    ##     #### ##  ### ##     ####   ##  ##   
+##   ##   ##  ##     ##     ##  ##  ##   ##   ##  ##            ## ##      ##    # ## ##   ##  ##     ##    ### ##   
+####      ##  ##   ## ##    ##  ##  ####      ##               # ### #   ## ##     ##      ##  ##     ##     ###     
+ #####    ##  ##   ##  ##   ## ##    #####    ## ##            ## # ##   ##  ##    ##      ## ##      ##      ###    
+    ###   ## ##    ## ###   ## ##       ###   ##               ##   ##   ## ###    ##      ## ##      ##       ###   
+##   ##   ##       ##  ##   ##  ##  ##   ##   ##  ##           ##   ##   ##  ##    ##      ##  ##     ##    ##  ###  
+ ## ##   ####     ###  ##  #### ##   ## ##   ### ###           ##   ##  ###  ##   ####    #### ##    ####   ##   ##  
+                                                                                                                     
+)EOF");
     SparseMatrix<float> sparse_matrix = generate_sparse_matrix<float>(SPARSITY_RATIO, ROWS, COLUMNS);
-    
     print_matrix<float>(sparse_matrix.mat, sparse_matrix.R, sparse_matrix.C, "Sparse Matrix");    
 
     // COO Representation
@@ -238,7 +247,7 @@ int main() {
     print_array<float>(coo_matrix.value, coo_matrix.num_nonzero, "value");
 
     SparseMatrix<float> sparse_matrix_from_coo = coo_to_sparse<float>(coo_matrix);
-    print_matrix<float>(sparse_matrix_from_coo.mat, sparse_matrix_from_coo.R, sparse_matrix_from_coo.C, "Sparse Matric from COO");
+    print_matrix<float>(sparse_matrix_from_coo.mat, sparse_matrix_from_coo.R, sparse_matrix_from_coo.C, "Sparse Matrix from COO");
 
     std::cout   << "(Original Sparse) vs (COO->Sparse) allclose: "
                 << (all_close<float>(sparse_matrix.mat, sparse_matrix_from_coo.mat, sparse_matrix.R * sparse_matrix.C, abs_tol, rel_tol) ? "true" : "false")
@@ -262,7 +271,7 @@ int main() {
     print_array<float>(csr_matrix.value, csr_matrix.num_nonzero, "value");
 
     SparseMatrix<float> sparse_matrix_from_csr = csr_to_sparse<float>(csr_matrix);
-    print_matrix<float>(sparse_matrix_from_csr.mat, sparse_matrix_from_csr.R, sparse_matrix_from_csr.C, "Sparse Matric from CSR");
+    print_matrix<float>(sparse_matrix_from_csr.mat, sparse_matrix_from_csr.R, sparse_matrix_from_csr.C, "Sparse Matrix from CSR");
 
     std::cout   << "(Original Sparse) vs (CSR->Sparse) allclose: "
                 << (all_close<float>(sparse_matrix.mat, sparse_matrix_from_csr.mat, sparse_matrix.R * sparse_matrix.C, abs_tol, rel_tol) ? "true" : "false")
@@ -286,7 +295,7 @@ int main() {
     print_array<float>(ell_matrix.value, ell_matrix.R*ell_matrix.max_nz_in_row, "value");
 
     SparseMatrix<float> sparse_matrix_from_ell = ell_to_sparse<float>(ell_matrix);
-    print_matrix<float>(sparse_matrix_from_ell.mat, sparse_matrix_from_ell.R, sparse_matrix_from_ell.C, "Sparse Matric from ELL");
+    print_matrix<float>(sparse_matrix_from_ell.mat, sparse_matrix_from_ell.R, sparse_matrix_from_ell.C, "Sparse Matrix from ELL");
 
     std::cout   << "(Original Sparse) vs (ELL->Sparse) allclose: "
                 << (all_close<float>(sparse_matrix.mat, sparse_matrix_from_ell.mat, sparse_matrix.R * sparse_matrix.C, abs_tol, rel_tol) ? "true" : "false")
