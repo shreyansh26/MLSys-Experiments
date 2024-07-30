@@ -5,7 +5,7 @@
 
 #define ROWS 10
 #define COLUMNS 10
-#define SPARSITY_RATIO 0.1
+#define SPARSITY_RATIO 0.2
 
 template<typename T>
 struct SparseMatrix {
@@ -18,6 +18,16 @@ struct SparseMatrix {
 template <typename T>
 struct COOMatrix {
     unsigned int* rowIdx;
+    unsigned int* colIdx;
+    T* value;
+    unsigned int R;
+    unsigned int C;
+    unsigned int num_nonzero;
+};
+
+template <typename T>
+struct CSRMatrix {
+    unsigned int* rowPtrs;
     unsigned int* colIdx;
     T* value;
     unsigned int R;
@@ -76,8 +86,50 @@ SparseMatrix<T> coo_to_sparse(COOMatrix<T> A) {
 
     std::fill(mat, mat+A.R*A.C, static_cast<T>(0));
 
-    for(int i=0; i<A.num_nonzero; i++) {
+    for(unsigned int i=0; i<A.num_nonzero; i++) {
         mat[A.rowIdx[i]*A.C + A.colIdx[i]] = A.value[i];
+    }
+
+    SparseMatrix<T> sparse_matrix = {mat, A.R, A.C, A.num_nonzero};
+    return sparse_matrix;
+}
+
+template <typename T>
+CSRMatrix<T> sparse_to_csr(SparseMatrix<T> A) {
+    unsigned int* rowPtrs = (unsigned int*)malloc((A.R+1) * sizeof(unsigned int));
+    unsigned int* colIdx = (unsigned int*)malloc(A.num_nonzero * sizeof(unsigned int));
+    T* value = (T*)malloc(A.num_nonzero * sizeof(T));
+
+    unsigned int row_cntr = 0;
+    unsigned int cntr = 0;
+    for(unsigned int row=0; row<A.R; row++) {
+        rowPtrs[row_cntr] = cntr;
+        for(unsigned int col=0; col<A.C; col++) {
+            if(A.mat[row*A.C + col] != 0) {
+                colIdx[cntr] = col;
+                value[cntr] = A.mat[row*A.C + col];
+                cntr++;
+            }
+        }
+        row_cntr++;
+    }
+    rowPtrs[row_cntr] = cntr;
+    CSRMatrix<T> csr_matrix = {rowPtrs, colIdx, value, A.R, A.C, A.num_nonzero};
+    return csr_matrix;
+}
+
+template <typename T>
+SparseMatrix<T> csr_to_sparse(CSRMatrix<T> A) {
+    T* mat = (T*)malloc(A.R * A.C * sizeof(T));
+
+    std::fill(mat, mat+A.R*A.C, static_cast<T>(0));
+
+    for(unsigned int i=0; i<A.R; i++) {
+        for(unsigned int j=A.rowPtrs[i]; j<A.rowPtrs[i+1]; j++) {
+            unsigned int row_idx = i;
+            unsigned int col_idx = A.colIdx[j];
+            mat[row_idx*A.C + col_idx] = A.value[j];
+        }
     }
 
     SparseMatrix<T> sparse_matrix = {mat, A.R, A.C, A.num_nonzero};
@@ -94,14 +146,28 @@ int main() {
 
     // COO Representation
     COOMatrix<float> coo_matrix = sparse_to_coo<float>(sparse_matrix);
-    print_array<unsigned int>(coo_matrix.rowIdx, sparse_matrix.num_nonzero, "rowIdx");
-    print_array<unsigned int>(coo_matrix.colIdx, sparse_matrix.num_nonzero, "colIdx");
-    print_array<float>(coo_matrix.value, sparse_matrix.num_nonzero, "value");
+    print_array<unsigned int>(coo_matrix.rowIdx, coo_matrix.num_nonzero, "rowIdx");
+    print_array<unsigned int>(coo_matrix.colIdx, coo_matrix.num_nonzero, "colIdx");
+    print_array<float>(coo_matrix.value, coo_matrix.num_nonzero, "value");
 
     SparseMatrix<float> sparse_matrix_from_coo = coo_to_sparse<float>(coo_matrix);
     print_matrix<float>(sparse_matrix_from_coo.mat, sparse_matrix_from_coo.R, sparse_matrix_from_coo.C, "Sparse Matric from COO");
 
     std::cout   << "(Original Sparse) vs (COO->Sparse) allclose: "
                 << (all_close<float>(sparse_matrix.mat, sparse_matrix_from_coo.mat, sparse_matrix.R * sparse_matrix.C, abs_tol, rel_tol) ? "true" : "false")
+                << std::endl;
+
+
+    // CSR Representation
+    CSRMatrix<float> csr_matrix = sparse_to_csr<float>(sparse_matrix);
+    print_array<unsigned int>(csr_matrix.rowPtrs, csr_matrix.R-1, "rowPtrs");
+    print_array<unsigned int>(csr_matrix.colIdx, csr_matrix.num_nonzero, "colIdx");
+    print_array<float>(csr_matrix.value, csr_matrix.num_nonzero, "value");
+
+    SparseMatrix<float> sparse_matrix_from_csr = csr_to_sparse<float>(csr_matrix);
+    print_matrix<float>(sparse_matrix_from_csr.mat, sparse_matrix_from_csr.R, sparse_matrix_from_csr.C, "Sparse Matric from CSR");
+
+    std::cout   << "(Original Sparse) vs (CSR->Sparse) allclose: "
+                << (all_close<float>(sparse_matrix.mat, sparse_matrix_from_csr.mat, sparse_matrix.R * sparse_matrix.C, abs_tol, rel_tol) ? "true" : "false")
                 << std::endl; 
 }
