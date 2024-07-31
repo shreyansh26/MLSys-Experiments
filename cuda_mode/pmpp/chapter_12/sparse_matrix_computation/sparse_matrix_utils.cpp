@@ -2,51 +2,13 @@
 #include <vector>
 #include <climits>
 
+#include "sparse_matrix_utils.hpp"
 #include "cuda_utils.hpp"
 
 #define ROWS            10
 #define COLUMNS         10
 #define SPARSITY_RATIO  0.2
 #define PAD_VAL         (1<<20)
-
-template<typename T>
-struct SparseMatrix {
-    T* mat;
-    unsigned int R;
-    unsigned int C;
-    unsigned int num_nonzero;
-};
-
-template <typename T>
-struct COOMatrix {
-    unsigned int* rowIdx;
-    unsigned int* colIdx;
-    T* value;
-    unsigned int R;
-    unsigned int C;
-    unsigned int num_nonzero;
-};
-
-template <typename T>
-struct CSRMatrix {
-    unsigned int* rowPtrs;
-    unsigned int* colIdx;
-    T* value;
-    unsigned int R;
-    unsigned int C;
-    unsigned int num_nonzero;
-};
-
-template <typename T>
-struct ELLMatrix {
-    unsigned int* rowPtrs;
-    unsigned int* colIdx;
-    T* value;
-    unsigned int max_nz_in_row;
-    unsigned int R;
-    unsigned int C;
-    unsigned int num_nonzero;
-};
 
 template <typename T>
 int get_num_nonzero(T*A, unsigned int R, unsigned int C) {
@@ -212,6 +174,15 @@ SparseMatrix<T> ell_to_sparse(ELLMatrix<T> A) {
     SparseMatrix<T> sparse_matrix = {mat, A.R, A.C, A.num_nonzero};
     return sparse_matrix;
 }
+
+template int get_num_nonzero<float>(float*, unsigned int, unsigned int);
+template SparseMatrix<float> generate_sparse_matrix(float, unsigned int, unsigned int);
+template COOMatrix<float> sparse_to_coo(SparseMatrix<float>);
+template SparseMatrix<float> coo_to_sparse(COOMatrix<float>);
+template CSRMatrix<float> sparse_to_csr(SparseMatrix<float>);
+template SparseMatrix<float> csr_to_sparse(CSRMatrix<float>);
+template ELLMatrix<float> sparse_to_ell(SparseMatrix<float>);
+template SparseMatrix<float> ell_to_sparse(ELLMatrix<float>);
 
 int main() {
     float abs_tol = 1.0e-3f;
