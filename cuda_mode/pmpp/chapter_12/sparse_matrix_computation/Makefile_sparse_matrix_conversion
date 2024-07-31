@@ -1,10 +1,10 @@
-GCC        	= /usr/bin/g++
-NVCC 		= /usr/bin/nvcc
-GCC_FLAGS  			= -O3 -I/usr/include
-LD_FLAGS    = -lcudart -L/usr/lib64
-EXE	        = sparse_matrix_conversion
-OBJ	        = sparse_matrix_conversion.o
-UTILS_OBJ 	= cuda_utils.o
+GCC        				= /usr/bin/g++
+NVCC 					= /usr/bin/nvcc
+GCC_FLAGS  				= -O3 -I/usr/include
+LD_FLAGS    			= -lcudart -L/usr/lib64
+EXE	        			= sparse_matrix_conversion
+OBJ	        			= sparse_matrix_conversion.o
+UTILS_OBJ 				= cuda_utils.o
 SPARSE_MATRIX_UTILS_OBJ	= sparse_matrix_utils.o
 
 default: $(EXE)
