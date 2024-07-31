@@ -176,13 +176,13 @@ SparseMatrix<T> ell_to_sparse(ELLMatrix<T> A) {
 }
 
 template int get_num_nonzero<float>(float*, unsigned int, unsigned int);
-template SparseMatrix<float> generate_sparse_matrix(float, unsigned int, unsigned int);
-template COOMatrix<float> sparse_to_coo(SparseMatrix<float>);
-template SparseMatrix<float> coo_to_sparse(COOMatrix<float>);
-template CSRMatrix<float> sparse_to_csr(SparseMatrix<float>);
-template SparseMatrix<float> csr_to_sparse(CSRMatrix<float>);
-template ELLMatrix<float> sparse_to_ell(SparseMatrix<float>);
-template SparseMatrix<float> ell_to_sparse(ELLMatrix<float>);
+template SparseMatrix<float> generate_sparse_matrix<float>(float, unsigned int, unsigned int);
+template COOMatrix<float> sparse_to_coo<float>(SparseMatrix<float>);
+template SparseMatrix<float> coo_to_sparse<float>(COOMatrix<float>);
+template CSRMatrix<float> sparse_to_csr<float>(SparseMatrix<float>);
+template SparseMatrix<float> csr_to_sparse<float>(CSRMatrix<float>);
+template ELLMatrix<float> sparse_to_ell<float>(SparseMatrix<float>);
+template SparseMatrix<float> ell_to_sparse<float>(ELLMatrix<float>);
 
 int main() {
     float abs_tol = 1.0e-3f;
