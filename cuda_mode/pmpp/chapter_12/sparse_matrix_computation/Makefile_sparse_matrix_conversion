@@ -15,10 +15,10 @@ $(UTILS_OBJ): cuda_utils.cu
 $(SPARSE_MATRIX_UTILS_OBJ): sparse_matrix_utils.cpp
 	$(NVCC) -c -o $@ $< $(GCC_FLAGS)
 
-$(OBJ): sparse_matrix_utils.cpp
+$(OBJ): sparse_matrix_conversion.cpp
 	$(GCC) -c -o $@ $< $(GCC_FLAGS)
 
-$(EXE): $(UTILS_OBJ) $(OBJ)
+$(EXE): $(UTILS_OBJ) $(SPARSE_MATRIX_UTILS_OBJ) $(OBJ)
 	$(GCC) $^ -o $@ $(LD_FLAGS)
 
 clean:
