@@ -1,5 +1,4 @@
 TORCH_PATH 				= ./libtorch/libtorch_cxx11_abi_2.4.0_cu121
-CUDA_PATH				= /usr/lib/cuda
 NVCC 					= /usr/bin/nvcc
 GCC 					= /usr/bin/g++
 NVCC_FLAGS  			= -O3 -I/usr/include -I$(TORCH_PATH)/include/torch/csrc/api/include -I$(TORCH_PATH)/include/
