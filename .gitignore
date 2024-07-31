@@ -25,3 +25,4 @@ linear_layer_triton/misc/train_mnist.py
 linear_layer_triton/misc/mnist_model.py
 linear_layer_triton/misc/*.txt
 .ipynb_checkpoints
+libtorch/
