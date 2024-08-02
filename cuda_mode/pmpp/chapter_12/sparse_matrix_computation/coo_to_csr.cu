@@ -3,6 +3,10 @@
 #include "sparse_matrix_utils.hpp"
 #include "cuda_utils.hpp"
 
+// Can't go higher than 8192 rows because of shared memory
+// limit of 256KB
+// 16384 rows -> 16384 * 4 bytes (unsigned int) = 64KB
+// 16384 -> 4 blocks -> 4 * 64 = 262KB (higher than 256KB)
 #define ROWS            8192
 #define COLUMNS         8192
 #define SPARSITY_RATIO  0.2
