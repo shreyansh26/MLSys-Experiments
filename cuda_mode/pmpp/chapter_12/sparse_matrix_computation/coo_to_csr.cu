@@ -80,7 +80,9 @@ __global__ void kogge_stone_segmented_scan_kernel(T* X, T* Y, T* partialSums, un
     __shared__ T XY_s[BLOCK_SIZE];
     unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
+    // Important for Exclusive scan
     if(i < N and threadIdx.x > 0) {
+        // Important for Exclusive scan
         XY_s[threadIdx.x] = X[i-1];
     }    
     else {
