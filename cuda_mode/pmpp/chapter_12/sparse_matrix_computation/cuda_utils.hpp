@@ -21,4 +21,4 @@ template <typename T>
 void print_matrix(T* A, unsigned int R, unsigned int C, std::string msg);
 
 template <typename T>
-bool all_close(T* A, T* A_ref, unsigned int N, T abs_tol, double rel_tol);
+bool all_close(T* A, T* A_ref, unsigned int N, float abs_tol, double rel_tol);

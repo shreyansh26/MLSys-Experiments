@@ -85,7 +85,7 @@ void print_matrix(T* A, unsigned int R, unsigned int C, std::string msg) {
 }
 
 template <typename T>
-bool all_close(T* A, T* A_ref, unsigned int N, T abs_tol, double rel_tol) {
+bool all_close(T* A, T* A_ref, unsigned int N, float abs_tol, double rel_tol) {
     bool is_close = true;
     for(unsigned int i=0; i<N; i++) {
         double A_val = static_cast<double>(A[i]);
@@ -108,7 +108,9 @@ bool all_close(T* A, T* A_ref, unsigned int N, T abs_tol, double rel_tol) {
     return is_close;
 }
 
+template void random_initialize_array<unsigned int>(unsigned int*, unsigned int, unsigned int);
 template void print_array<unsigned int>(unsigned int*, unsigned int, std::string);
+template bool all_close<unsigned int>(unsigned int*, unsigned int*, unsigned int, float, double);
 
 template void random_initialize_array<float>(float*, unsigned int, unsigned int);
 template void random_initialize_sparse_matrix<float>(float*, float, unsigned int, unsigned int);
@@ -120,4 +122,4 @@ template void random_initialize_array<double>(double*, unsigned int, unsigned in
 template void random_initialize_sparse_matrix<double>(double*, float, unsigned int, unsigned int);
 template void print_array<double>(double*, unsigned int, std::string);
 template void print_matrix<double>(double*, unsigned int, unsigned int, std::string);
-template bool all_close<double>(double*, double*, unsigned int, double, double);
+template bool all_close<double>(double*, double*, unsigned int, float, double);
