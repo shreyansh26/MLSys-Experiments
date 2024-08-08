@@ -35,14 +35,13 @@ if __name__ == "__main__":
     HIDDEN_DIM = 32
     NUM_CHUNKS = 3
     assert SEQ_LEN % NUM_CHUNKS == 0
+    CHUNK_WIDTH = SEQ_LEN // NUM_CHUNKS
 
     q = torch.randn(SEQ_LEN, HIDDEN_DIM)
     k = torch.randn(SEQ_LEN, HIDDEN_DIM)
     v = torch.randn(SEQ_LEN, HIDDEN_DIM)
 
     orig_attn = compute_attn(q, k, v)
-
-    CHUNK_WIDTH = SEQ_LEN // NUM_CHUNKS
 
     chunked_prefill_attn = compute_chunked_prefill_attn(q, k, v, NUM_CHUNKS, CHUNK_WIDTH)
 
