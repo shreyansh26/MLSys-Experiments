@@ -1,0 +1,11 @@
+{
+    "_name_or_path": "medusa_mistral",
+    "architectures": ["MedusaModel"],
+    "num_heads": 3,
+    "num_hidden_layers": 1,
+    "transformers_version": "4.42.4",
+    "hidden_size": 4096, 
+    "model_type": "medusa",
+    "truncated_vocab_size": null, 
+    "vocab_size": 32000
+}
