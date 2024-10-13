@@ -6,20 +6,18 @@
 
 #include "reduction.h"
 
-void run_benchmark(void (*reduce)(float*, float*, int, int), 
-                   float *d_outPtr, float *d_inPtr, int size);
+void run_benchmark(void (*reduce)(float*, float*, int, int), float *d_outPtr, float *d_inPtr, int size);
 void init_input(float* data, int size);
 float get_cpu_result(float *data, int size);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     float *h_inPtr;
     float *d_inPtr, *d_outPtr;
 
-    unsigned int size = 1 << 24;
+    unsigned int size = 1 << 24 + 1;
 
     float result_host, result_gpu;
 
@@ -54,15 +52,11 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void run_reduction(void (*reduce)(float*, float*, int, int), 
-              float *d_outPtr, float *d_inPtr, int size, int n_threads)
-{
+void run_reduction(void (*reduce)(float*, float*, int, int), float *d_outPtr, float *d_inPtr, int size, int n_threads) {
     reduce(d_outPtr, d_inPtr, size, n_threads);
 }
 
-void run_benchmark(void (*reduce)(float*, float*, int, int), 
-              float *d_outPtr, float *d_inPtr, int size)
-{
+void run_benchmark(void (*reduce)(float*, float*, int, int), float *d_outPtr, float *d_inPtr, int size) {
     int num_threads = 256;
     int test_iter = 100;
 
@@ -79,7 +73,7 @@ void run_benchmark(void (*reduce)(float*, float*, int, int),
     // Operation body
     ////////
     cudaEventRecord(start);
-    for (int i = 0; i < test_iter; i++) {
+    for(int i = 0; i < test_iter; i++) {
         cudaMemcpy(d_outPtr, d_inPtr, size * sizeof(float), cudaMemcpyDeviceToDevice);
         run_reduction(reduce, d_outPtr, d_outPtr, size, num_threads);
     }
@@ -95,20 +89,17 @@ void run_benchmark(void (*reduce)(float*, float*, int, int),
 }
 
 void
-init_input(float *data, int size)
-{
-    for (int i = 0; i < size; i++)
-    {
+init_input(float *data, int size) {
+    for(int i = 0; i < size; i++) {
         // Keep the numbers small so we don't get truncation error in the sum
         data[i] = (rand() & 0xFF) / (float)RAND_MAX;
     }
 }
 
 float
-get_cpu_result(float *data, int size)
-{
+get_cpu_result(float *data, int size) {
     double result = 0.f;
-    for (int i = 0; i < size; i++)
+    for(int i = 0; i < size; i++)
         result += data[i];
 
     return (float)result;
