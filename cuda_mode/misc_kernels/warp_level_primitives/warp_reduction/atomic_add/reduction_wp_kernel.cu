@@ -68,8 +68,7 @@ reduction_kernel(float *g_out, float *g_in, unsigned int size) {
     }
 }
 
-void reduction(float *g_outPtr, float *g_inPtr, int size, int n_threads)
-{
+void reduction(float *g_outPtr, float *g_inPtr, int size, int n_threads) {
     int num_sms;
     int num_blocks_per_sm;
     cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0);
