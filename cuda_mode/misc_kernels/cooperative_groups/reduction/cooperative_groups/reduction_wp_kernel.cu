@@ -49,17 +49,13 @@ __global__ void reduction_kernel(float *g_out, float *g_in, unsigned int size) {
 }
 
 void reduction(float *g_outPtr, float *g_inPtr, int size, int n_threads){
-    // int num_sms;
-    // int num_blocks_per_sm;
-    // cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0);
-    // cudaOccupancyMaxActiveBlocksPerMultiprocessor(&num_blocks_per_sm, reduction_kernel, n_threads, n_threads*sizeof(float));
-    // int n_blocks = min(num_blocks_per_sm * num_sms, (size + n_threads - 1) / n_threads);
-    int n_blocks = (size + n_threads - 1) / n_threads;
+    int num_sms;
+    int num_blocks_per_sm;
+    cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0);
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&num_blocks_per_sm, reduction_kernel, n_threads, n_threads*sizeof(float));
+    int n_blocks = min(num_blocks_per_sm * num_sms, (size + n_threads - 1) / n_threads);
     size_t shared_mem_size = n_threads * sizeof(float);
-    // printf("num blocks: %d\n", n_blocks);
-    // printf("n_threads: %d\n", n_threads);
-    // printf("shared_mem_size: %zuKB\n", shared_mem_size/1000);
-    // printf("n_blocks: %d\n", n_blocks);
+    
     reduction_kernel<<<n_blocks, n_threads, shared_mem_size>>>(g_outPtr, g_inPtr, size);
     cudaError_t const err{cudaGetLastError()};
     if (err != cudaSuccess) {
@@ -67,5 +63,4 @@ void reduction(float *g_outPtr, float *g_inPtr, int size, int n_threads){
         std::cerr << cudaGetErrorString(err) << std::endl;
         std::exit(EXIT_FAILURE);
     }
-    // printf("done\n");
 }
