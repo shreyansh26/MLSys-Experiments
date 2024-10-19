@@ -11,6 +11,7 @@ namespace cg = cooperative_groups;
 
 __device__ float reduce_sum(thread_group g, float *temp, float val) { 
     int lane = g.thread_rank();
+    // printf("lane: %d\n", lane); // prints values from 0 to 1023
 
     // Each iteration halves the number of active threads
     // Each thread adds its partial sum[i] to sum[lane+i]
