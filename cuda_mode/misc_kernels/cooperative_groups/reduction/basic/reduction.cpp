@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
     float *d_inPtr, *d_outPtr;
     float *h_outPtr;  // New host output pointer
 
-    unsigned int size = 1 << 24 + 1;
+    unsigned int size = (1 << 24) + 1;
 
     float result_host;
 
