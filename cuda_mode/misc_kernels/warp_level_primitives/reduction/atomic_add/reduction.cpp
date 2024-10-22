@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
     float *h_inPtr;
     float *d_inPtr, *d_outPtr;
 
-    unsigned int size = 1 << 24 + 1;
+    unsigned int size = (1 << 24) + 1;
 
     float result_host, result_gpu;
 
