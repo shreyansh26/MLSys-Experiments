@@ -22,10 +22,17 @@ __device__ float reduce_sum_tile_shfl(thread_block_tile<tile_size> g, float val)
 
 __device__ float thread_sum(float *input, unsigned int n) {
     float sum = 0;
-
-    for(int i = blockIdx.x * blockDim.x + threadIdx.x; i < n / 4; i += blockDim.x * gridDim.x) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    for(int i = idx; i < n / 4; i += blockDim.x * gridDim.x) {
         float4 in = ((float4*)input)[i];
         sum += in.x + in.y + in.z + in.w;
+    }
+
+    int leftover_start = (n / 4) * 4;
+    if(idx == 0) {
+        for(int i = leftover_start; i < n; i++) {
+            sum += input[i];
+        }
     }
     return sum;
 }
