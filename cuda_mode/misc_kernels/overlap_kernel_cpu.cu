@@ -49,6 +49,7 @@ void incrementArrayCUDA(int* h_array, int* h_ref_array, int size) {
     // Hence, can launch another CPU code which will overlap with the kernel
     calculate_with_cpu(h_ref_array, size);
 
+    // Whether the host function or device kernel completes first doesn’t affect the subsequent device-to-host transfer, which will begin only after the kernel completes.
     // Copy the result back to host
     cudaMemcpy(h_array, d_array, size * sizeof(int), cudaMemcpyDeviceToHost);
 
