@@ -43,9 +43,10 @@ void incrementArrayCUDA(int* h_array, int* h_ref_array, int size) {
     warmupKernel<<<numBlocks, blockSize>>>(d_array, size);
 
     // Launch the kernel
+    // This is non-blocking
     incrementKernel<<<numBlocks, blockSize>>>(d_array, size);
 
-    // Can launch another CPU code which will overlap with the kernel
+    // Hence, can launch another CPU code which will overlap with the kernel
     calculate_with_cpu(h_ref_array, size);
 
     // Copy the result back to host
