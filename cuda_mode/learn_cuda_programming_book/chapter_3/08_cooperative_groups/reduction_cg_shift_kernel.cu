@@ -51,8 +51,7 @@ __inline__ __device__ float block_reduce_sum(thread_block block, float val) {
 }
 
 // cuda thread synchronization
-__global__ void reduction_kernel(float *g_out, float *g_in, unsigned int size)
-{
+__global__ void reduction_kernel(float *g_out, float *g_in, unsigned int size) {
     unsigned int idx_x = blockIdx.x * blockDim.x + threadIdx.x;
     thread_block block = this_thread_block();
 
