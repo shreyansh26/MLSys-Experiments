@@ -43,6 +43,8 @@ void Operator::async_operation(float *h_c, const float *h_a, const float *h_b, f
 
     // should be tested and profiled with and without this line
     // this would ideally make the kernel calls synchronous
+    // with stream synchronize - 11.39 ms
+    // without stream synchronize - 8.49 ms
     // cudaStreamSynchronize(stream);
 
     printf("Launched GPU task %d\n", index);
