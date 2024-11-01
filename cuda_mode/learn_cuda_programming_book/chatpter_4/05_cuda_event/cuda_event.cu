@@ -3,6 +3,19 @@
 
 using namespace std;
 
+/*
+cudaEventSynchronize(stop):
+* Waits only for operations before the specific stop event to complete
+* More efficient as it only synchronizes operations up to that event
+* In your code, it waits for the vecAdd_kernel to finish since stop was recorded right after the kernel launch
+
+cudaDeviceSynchronize():
+* Waits for ALL operations on the GPU to complete
+* Less efficient as it's a global synchronization
+* Would synchronize even operations that happened after your kernel (if any)
+
+*/
+
 __global__ void vecAdd_kernel(float *c, const float* a, const float* b);
 void init_buffer(float *data, const int size);
 
