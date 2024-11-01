@@ -3,6 +3,42 @@
 
 using namespace std;
 
+/*
+
+Let me explain why adding `cudaEventSynchronize(stop)` in this location causes issues:
+
+1. **Synchronization Point**: When you call `cudaEventSynchronize(stop)`, it blocks the CPU thread until the event is recorded, which means it waits for the kernel to complete. This defeats the purpose of asynchronous execution with streams.
+
+2. **Location Issue**: In the `async_operation` method, the sequence is:
+```cuda:cuda_event_with_stream.cu
+// ... existing code ...
+    // record the event before the kernel execution
+    cudaEventRecord(start, stream);
+    
+    vecAdd_kernel<<< dimGrid, dimBlock, 0, stream >>>(d_c, d_a, d_b);
+    
+    // record the event right after the kernel execution finished
+    cudaEventRecord(stop, stream);
+    
+    cudaMemcpyAsync(h_c, d_c, bufsize, cudaMemcpyDeviceToHost, stream);
+    
+    // This synchronization here is problematic
+    // cudaEventSynchronize(stop);
+// ... existing code ...
+```
+
+The problems are:
+
+1. By synchronizing here, you're forcing each stream to wait for its kernel to complete before proceeding with the memory copy and next stream's operations. This serializes the execution, eliminating the benefits of concurrent streams.
+
+2. The timing measurements become inaccurate because you're introducing artificial waits between operations that should be overlapping.
+
+3. The correct synchronization is already handled at the program level with `cudaDeviceSynchronize()` in the main function, which ensures all streams complete before measuring final timing.
+
+If you need to measure just the kernel execution time, the current setup with `start` and `stop` events is correct - just let them record asynchronously and query the elapsed time later using `cudaEventElapsedTime()`, which is what the code already does in `print_kernel_time()`.
+
+*/
+
 __global__ void vecAdd_kernel(float *c, const float* a, const float* b);
 void init_buffer(float *data, const int size);
 
