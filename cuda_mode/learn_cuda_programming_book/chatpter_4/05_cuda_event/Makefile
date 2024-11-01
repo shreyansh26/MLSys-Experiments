@@ -1,7 +1,7 @@
 GCC			= /usr/bin/g++
 NVCC 		= /usr/bin/nvcc -ccbin ${GCC}
 
-TARGET		= cuda_event
+TARGET		= cuda_event cuda_event_with_stream
 
 INCLUDES	= -I/usr/include -I/home/shreyansh/cuda-samples/Common
 NVCC_FLAGS	= -m64 -lineinfo
@@ -22,6 +22,9 @@ ALL_CCFLAGS += -g -Xcompiler -fopenmp -rdc=true $(NVCC_FLAGS) $(INCLUDES)
 all : ${TARGET}
 
 cuda_event: cuda_event.cu
+	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIBRARIES)
+
+cuda_event_with_stream: cuda_event_with_stream.cu
 	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIBRARIES)
 
 clean:
