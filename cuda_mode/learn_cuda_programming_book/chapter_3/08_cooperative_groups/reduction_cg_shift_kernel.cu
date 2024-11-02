@@ -21,8 +21,8 @@ using namespace cooperative_groups;
 
 template <typename group_t>
 __inline__ __device__ float warp_reduce_sum(group_t group, float val) {
-    for (int offset = group.size() / 2; offset > 0; offset >>= 1)
-         val += group.shfl_down(val, offset);
+    for(int offset = group.size() / 2; offset > 0; offset >>= 1)
+        val += group.shfl_down(val, offset);
     return val;
 }
 
