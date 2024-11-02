@@ -16,19 +16,13 @@ endif
 $(foreach sm, ${SMS}, $(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
 
 # Openmp
-LIBRARIES += -lgomp
-ALL_CCFLAGS += -g -Xcompiler -fopenmp -rdc=true $(NVCC_FLAGS) $(INCLUDES)
+# LIBRARIES += -lgomp
+# ALL_CCFLAGS += -g -Xcompiler -fopenmp -rdc=true $(NVCC_FLAGS) $(INCLUDES)
 
 all : ${TARGET}
 
-reduction_kernel.o: reduction_kernel.cu
-	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
-
-reduction.o: reduction.cpp
-	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
-
-reduction: reduction.o reduction_kernel.o
-	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $^ $(LIBRARIES)
+reduction: reduction.cpp reduction_kernel.cu
+	$(EXEC) $(NVCC) $(INCLUDES) $(NVCC_FLAGS) -o $@ $^
 
 clean:
 	rm -f ${TARGET} *.o
