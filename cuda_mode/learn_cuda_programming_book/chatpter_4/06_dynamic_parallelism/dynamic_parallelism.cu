@@ -14,7 +14,7 @@ __global__ void child_kernel(int *data, int seed) {
 }
 
 __global__ void parent_kernel(int *data) {
-    if (threadIdx.x == 0) {
+    if(threadIdx.x == 0) {
         int child_size = BUF_SIZE/gridDim.x;
         // printf("Child size: %d\n", child_size);
         child_kernel<<< child_size/BLOCKDIM, BLOCKDIM >>>(&data[child_size*blockIdx.x], blockIdx.x+1);

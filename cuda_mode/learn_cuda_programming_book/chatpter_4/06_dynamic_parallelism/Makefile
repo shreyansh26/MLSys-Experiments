@@ -1,7 +1,7 @@
 GCC			= /usr/bin/g++
 NVCC 		= /usr/bin/nvcc -ccbin ${GCC}
 
-TARGET		= dynamic_parallelism
+TARGET		= dynamic_parallelism recursion
 
 INCLUDES	= -I/usr/include -I/home/shreyansh/cuda-samples/Common
 NVCC_FLAGS	= -m64 -lineinfo
@@ -22,6 +22,9 @@ ALL_CCFLAGS += -rdc=true -g -Xcompiler -fopenmp -rdc=true $(NVCC_FLAGS) $(INCLUD
 all : ${TARGET}
 
 dynamic_parallelism: dynamic_parallelism.cu
+	$(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIBRARIES)
+
+recursion: recursion.cu
 	$(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $< $(LIBRARIES)
 
 clean:
