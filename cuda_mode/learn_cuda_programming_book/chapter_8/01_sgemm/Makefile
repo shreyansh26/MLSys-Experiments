@@ -1,7 +1,7 @@
 GCC			= /usr/bin/g++
 NVCC 		= /usr/bin/nvcc -ccbin ${GCC}
 
-TARGET		= cublas_sgemm
+TARGET		= cublas_sgemm cublas_xt_sgemm
 
 INCLUDES	= -I/usr/include
 NVCC_FLAGS	= -m64 -lineinfo
@@ -22,6 +22,9 @@ ALL_CCFLAGS += -g -Xcompiler -fopenmp -rdc=true $(NVCC_FLAGS)
 all : ${TARGET}
 
 cublas_sgemm: cublas_sgemm.cpp
+	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -o $@ $+ $(LIBRARIES)
+
+cublas_xt_sgemm: cublas_xt_sgemm.cpp
 	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -o $@ $+ $(LIBRARIES)
 
 clean:
