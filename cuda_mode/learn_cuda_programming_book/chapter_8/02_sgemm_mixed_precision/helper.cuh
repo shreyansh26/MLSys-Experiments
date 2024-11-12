@@ -23,7 +23,6 @@ namespace fp16 {
 }
 
 namespace helper {
-
     template <typename T>
     class CBuffer {
         int size_;
