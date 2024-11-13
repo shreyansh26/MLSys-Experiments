@@ -1,7 +1,7 @@
 GCC			= /usr/bin/g++
 NVCC 		= /usr/bin/nvcc -ccbin ${GCC}
 
-TARGET		= curand_host	
+TARGET		= curand_host gemm_with_curand_host
 
 INCLUDES	= -I/usr/include
 NVCC_FLAGS	= -m64 -lineinfo
@@ -23,6 +23,15 @@ all : ${TARGET}
 
 curand_host: curand_host.cpp
 	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -o $@ $+ $(LIBRARIES)
+
+gemm_with_curand_host.o: gemm_with_curand_host.cpp
+	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -c -o $@ $+
+
+fp16.o: fp16.cu
+	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -c -o $@ $+
+
+gemm_with_curand_host: gemm_with_curand_host.o fp16.o
+	$(EXEC) $(NVCC) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
 
 clean:
 	rm -f ${TARGET} *.o
