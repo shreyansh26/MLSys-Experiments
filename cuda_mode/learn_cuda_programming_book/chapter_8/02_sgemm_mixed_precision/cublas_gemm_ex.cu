@@ -8,9 +8,9 @@ using namespace helper;
 
 int main() {
     int M, N, K;
-    M = 4;
-    N = 5;
-    K = 6;
+    M = 8192;
+    N = 8192;
+    K = 8192;
 
     srand(2019);
     // initialize host buffers
