@@ -148,6 +148,7 @@ int main(int argc, char **argv) {
     free(B);
     free(C);
     free(C_ref);
+    free(C_orig);
     cudaFree(A_d);
     cudaFree(B_d);
     cudaFree(C_d);
