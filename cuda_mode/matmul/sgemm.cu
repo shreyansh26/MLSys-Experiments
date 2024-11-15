@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     cudaEventCreate(&end);
 
     // cuBLAS FLOPs ceiling is reached at 8192
-    std::vector<int> SIZE = {128, 256, 512, 1024, 2048, 4096};
+    std::vector<int> SIZE = {2, 128, 256, 512, 1024, 2048, 4096};
 
     long m, n, k, max_size;
     max_size = SIZE[SIZE.size() - 1];
@@ -63,17 +63,19 @@ int main(int argc, char **argv) {
 
     float alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
 
-    float *A = nullptr, *B = nullptr, *C = nullptr, *C_ref = nullptr; // host matrices
+    float *A = nullptr, *B = nullptr, *C = nullptr, *C_ref = nullptr, *C_orig = nullptr; // host matrices
     float *A_d = nullptr, *B_d = nullptr, *C_d = nullptr, *C_ref_d = nullptr; // device matrices
 
     A = (float *)malloc(sizeof(float) * max_size * max_size);
     B = (float *)malloc(sizeof(float) * max_size * max_size);
     C = (float *)malloc(sizeof(float) * max_size * max_size);
+    C_orig = (float *)malloc(sizeof(float) * max_size * max_size);
     C_ref = (float *)malloc(sizeof(float) * max_size * max_size);
 
     randomize_matrix(A, max_size * max_size);
     randomize_matrix(B, max_size * max_size);
     randomize_matrix(C, max_size * max_size);
+    memcpy(C_orig, C, sizeof(float) * max_size * max_size);
 
     cudaCheck(cudaMalloc((void **)&A_d, sizeof(float) * max_size * max_size));
     cudaCheck(cudaMalloc((void **)&B_d, sizeof(float) * max_size * max_size));
@@ -83,7 +85,7 @@ int main(int argc, char **argv) {
     cudaCheck(cudaMemcpy(A_d, A, sizeof(float) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(B_d, B, sizeof(float) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(C_d, C, sizeof(float) * max_size * max_size, cudaMemcpyHostToDevice));
-    cudaCheck(cudaMemcpy(C_ref_d, C_ref, sizeof(float) * max_size * max_size, cudaMemcpyHostToDevice));
+    cudaCheck(cudaMemcpy(C_ref_d, C, sizeof(float) * max_size * max_size, cudaMemcpyHostToDevice));
 
     int repeat_times = 50;
     for(int size : SIZE) {
@@ -107,13 +109,15 @@ int main(int argc, char **argv) {
                     std::ofstream fs;
                     fs.open(errLogFile);
                     fs << "A:\n";
-                    print_matrix(A, m, n, fs);
+                    print_matrix(A, m, k, fs);
                     fs << "B:\n";
-                    print_matrix(B, m, n, fs);
-                    fs << "C:\n";
-                    print_matrix(C, m, n, fs);
-                    fs << "Should:\n";
+                    print_matrix(B, k, n, fs);
+                    fs << "C_orig:\n";
+                    print_matrix(C_orig, m, n, fs);
+                    fs << "Should (Cublas):\n";
                     print_matrix(C_ref, m, n, fs);
+                    fs << "Kernel out:\n";
+                    print_matrix(C, m, n, fs);
                 }
                 exit(EXIT_FAILURE);
             }
