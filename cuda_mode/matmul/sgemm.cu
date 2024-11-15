@@ -3,9 +3,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
-#include <run.cuh>
 #include <vector>
 #include <iomanip>
+
+#include <run.cuh>
+#include <matrix_utils.cuh>
 
 #define cudaCheck(val) check_cuda((val), #val, __FILE__, __LINE__)
 
