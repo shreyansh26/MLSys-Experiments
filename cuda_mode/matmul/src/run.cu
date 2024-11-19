@@ -67,6 +67,13 @@ void run_sgemm_naive(int M, int N, int K, float alpha, float *A, float *B, float
     sgemm_naive<<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
 }
 
+void run_sgemm_global_coalescing(int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
+    dim3 gridDim(cdiv(M, 32), cdiv(N, 32));
+    dim3 blockDim(32 * 32);
+
+    sgemm_global_coalescing<32><<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+}
+
 void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
@@ -76,6 +83,10 @@ void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, floa
         case 1:
             // std:: cout << "Kernel 1 - Naive" << std::endl;
             run_sgemm_naive(M, N, K, alpha, A, B, beta, C);
+            break;
+        case 2:
+            // std::cout << Kernel 2 - Gloab Coalescing << std::endl;
+            run_sgemm_global_coalescing(M, N, K, alpha, A, B, beta, C);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
