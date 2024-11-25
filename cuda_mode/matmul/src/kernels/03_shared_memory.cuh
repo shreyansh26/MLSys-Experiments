@@ -10,17 +10,17 @@ __global__ void sgemm_shared_memory(int M, int N, int K, float alpha, const floa
     int cRow = blockIdx.x;
     int cCol = blockIdx.y;
 
-    // advance pointers to the starting positions
-    A += cRow * BLOCKDIM * K;                       // row=cRow, col=0
-    B += cCol * BLOCKDIM;                           // row=0, col=cCol
-    C += cRow * BLOCKDIM * N + cCol * BLOCKDIM;     // row=cRow, col=cCol
-
     // the inner row & col that we're accessing in this thread
     int threadRow = threadIdx.x / BLOCKDIM;
     int threadCol = threadIdx.x % BLOCKDIM;
 
     __shared__ float As[BLOCKDIM * BLOCKDIM];
     __shared__ float Bs[BLOCKDIM * BLOCKDIM];
+    
+    // advance pointers to the starting positions
+    A += cRow * BLOCKDIM * K;                       // row=cRow, col=0
+    B += cCol * BLOCKDIM;                           // row=0, col=cCol
+    C += cRow * BLOCKDIM * N + cCol * BLOCKDIM;     // row=cRow, col=cCol
 
     float sum = 0.f;
     for(int blck = 0; blck < K; blck += BLOCKDIM) {
