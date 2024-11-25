@@ -18,7 +18,7 @@ debug:
 	@$(MAKE) -C $(BUILD_DIR)
 
 clean:
-	@rm -rf $(BUILD_DIR)
+	@rm -rf $(BUILD_DIR) matrixValidationFailure.txt
 
 FUNCTION := $$(cuobjdump -symbols build/sgemm | grep -i Warptiling | awk '{print $$NF}')
 
