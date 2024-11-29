@@ -1,3 +1,4 @@
+// Based on - https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/
 int main() {
     const unsigned int N = 1048576;
     const unsigned int bytes = N * sizeof(int);
