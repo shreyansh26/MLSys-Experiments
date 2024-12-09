@@ -129,7 +129,7 @@ void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, floa
             run_sgemm_1d_blocktiling(M, N, K, alpha, A, B, beta, C);
             break;
         case 5:
-            // std::cout << "Kernel 4 - 1D Blocktiling" << std::endl;
+            // std::cout << "Kernel 5 - 2D Blocktiling" << std::endl;
             run_sgemm_2d_blocktiling(M, N, K, alpha, A, B, beta, C);
             break;
         default:
