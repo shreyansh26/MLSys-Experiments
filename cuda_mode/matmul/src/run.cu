@@ -106,6 +106,19 @@ void run_sgemm_2d_blocktiling(int M, int N, int K, float alpha, float *A, float 
     sgemm_2d_blocktiling<BM, BN, BK, TM, TN><<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
 }
 
+void run_sgemm_vectorize(int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
+    const int BM = 128;
+    const int BN = 128;
+    const int BK = 8;
+    const int TM = 8;
+    const int TN = 8;
+
+    dim3 gridDim(cdiv(N, BN), cdiv(M, BM));
+    dim3 blockDim((BM * BN) / (TM * TN));
+
+    sgemm_vectorize<BM, BN, BK, TM, TN><<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+}
+
 void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
@@ -131,6 +144,10 @@ void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, floa
         case 5:
             // std::cout << "Kernel 5 - 2D Blocktiling" << std::endl;
             run_sgemm_2d_blocktiling(M, N, K, alpha, A, B, beta, C);
+            break;
+        case 6:
+            // std::cout << "Kernel 6 - Vectorize" << std::endl;
+            run_sgemm_vectorize(M, N, K, alpha, A, B, beta, C);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
