@@ -1,3 +1,5 @@
+# From - https://www.speechmatics.com/company/articles-and-news/timing-operations-in-pytorch
+# This is also similar to what triton's do_bench does
 import os
 import subprocess
 
