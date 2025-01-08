@@ -1,0 +1,872 @@
+
+(1/73728): BK=8 BM=64 BN=64 WM=32 WN=32 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000012) s, performance: (355.6) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000020) s, performance: (1680.1) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000037) s, performance: (7287.1) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000089) s, performance: (24150.8) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000510) s, performance: (33677.3) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003831) s, performance: (35872.3) GFLOPS. size: (4096)
+(33/73728): BK=8 BM=64 BN=64 WM=32 WN=32 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000012) s, performance: (350.4) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000020) s, performance: (1666.1) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000037) s, performance: (7270.3) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000092) s, performance: (23244.4) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000546) s, performance: (31461.3) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004132) s, performance: (33261.9) GFLOPS. size: (4096)
+(2177/73728): BK=8 BM=64 BN=128 WM=32 WN=64 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (226.5) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1052.2) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000060) s, performance: (4504.0) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000114) s, performance: (18768.1) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000482) s, performance: (35629.9) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003925) s, performance: (35020.6) GFLOPS. size: (4096)
+(2179/73728): BK=8 BM=64 BN=128 WM=32 WN=64 WN_ITER=1 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (233.7) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1048.2) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000061) s, performance: (4426.9) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000118) s, performance: (18243.5) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000483) s, performance: (35545.9) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004012) s, performance: (34257.9) GFLOPS. size: (4096)
+(2209/73728): BK=8 BM=64 BN=128 WM=32 WN=64 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (227.3) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1062.0) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000058) s, performance: (4589.0) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000112) s, performance: (19149.9) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000456) s, performance: (37635.6) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003732) s, performance: (36824.3) GFLOPS. size: (4096)
+(2211/73728): BK=8 BM=64 BN=128 WM=32 WN=64 WN_ITER=2 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (237.2) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000031) s, performance: (1076.7) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000059) s, performance: (4556.9) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000114) s, performance: (18815.6) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000506) s, performance: (33937.2) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004127) s, performance: (33304.9) GFLOPS. size: (4096)
+(2241/73728): BK=8 BM=64 BN=128 WM=32 WN=64 WN_ITER=4 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (224.4) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1053.8) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000059) s, performance: (4559.7) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000113) s, performance: (19062.2) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000499) s, performance: (34395.4) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004040) s, performance: (34015.8) GFLOPS. size: (4096)
+(2561/73728): BK=8 BM=64 BN=128 WM=64 WN=32 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (237.5) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000030) s, performance: (1106.9) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000056) s, performance: (4785.4) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000107) s, performance: (20007.7) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000467) s, performance: (36758.1) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003781) s, performance: (36346.9) GFLOPS. size: (4096)
+(2563/73728): BK=8 BM=64 BN=128 WM=64 WN=32 WN_ITER=1 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000017) s, performance: (246.0) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000030) s, performance: (1113.5) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000057) s, performance: (4703.1) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000111) s, performance: (19403.7) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000443) s, performance: (38800.3) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003648) s, performance: (37675.1) GFLOPS. size: (4096)
+(2593/73728): BK=8 BM=64 BN=128 WM=64 WN=32 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (229.2) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000031) s, performance: (1073.0) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000058) s, performance: (4636.9) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000111) s, performance: (19394.1) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000457) s, performance: (37580.3) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003727) s, performance: (36877.0) GFLOPS. size: (4096)
+(2595/73728): BK=8 BM=64 BN=128 WM=64 WN=32 WN_ITER=2 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000018) s, performance: (239.4) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000030) s, performance: (1105.3) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000057) s, performance: (4732.6) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000109) s, performance: (19619.1) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000488) s, performance: (35220.9) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003806) s, performance: (36107.7) GFLOPS. size: (4096)
+(2625/73728): BK=8 BM=64 BN=128 WM=64 WN=32 WN_ITER=4 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (225.9) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000031) s, performance: (1071.4) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000058) s, performance: (4663.3) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000110) s, performance: (19561.8) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000481) s, performance: (35709.8) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003726) s, performance: (36888.0) GFLOPS. size: (4096)
+(4353/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should 17.38, Is  2.15 (Diff 15.23) at 256
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4355/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=1 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -21.48, Is -94.95 (Diff 73.47) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4357/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=1 TM=4 TN=16 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -49.70, Is -155.71 (Diff 106.01) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4385/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -11.49, Is -5.77 (Diff  5.73) at 192
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4387/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=2 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -73.39, Is -247.62 (Diff 174.23) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4389/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=2 TM=4 TN=16 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should  1.68, Is 50.88 (Diff 49.20) at 192
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4417/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=4 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should 40.17, Is 21.67 (Diff 18.49) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4419/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=4 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should 13.68, Is -103.43 (Diff 117.10) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4449/73728): BK=8 BM=64 BN=256 WM=32 WN=128 WN_ITER=8 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -7.39, Is 48.58 (Diff 55.97) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4737/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -80.74, Is -276.15 (Diff 195.41) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4739/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=1 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -79.85, Is -248.38 (Diff 168.52) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4741/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=1 TM=4 TN=16 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should  4.71, Is  7.59 (Diff  2.88) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4769/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -0.38, Is 25.04 (Diff 25.41) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4771/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=2 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -9.56, Is -160.31 (Diff 150.75) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4773/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=2 TM=4 TN=16 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should 52.41, Is 255.88 (Diff 203.47) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4801/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=4 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -10.76, Is -15.46 (Diff  4.70) at 128
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4803/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=4 TM=4 TN=8 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -2.26, Is -40.63 (Diff 38.37) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(4833/73728): BK=8 BM=64 BN=256 WM=64 WN=64 WN_ITER=8 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Divergence! Should -5.38, Is -43.73 (Diff 38.34) at 512
+Failed to pass the correctness verification against NVIDIA cuBLAS.
+ Logging faulty output into matrixValidationFailure.txt
+(6273/73728): BK=8 BM=128 BN=64 WM=32 WN=64 WN_ITER=1 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (223.8) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1041.1) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000060) s, performance: (4440.9) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000116) s, performance: (18513.9) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000519) s, performance: (33096.3) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004045) s, performance: (33978.4) GFLOPS. size: (4096)
+(6281/73728): BK=8 BM=128 BN=64 WM=32 WN=64 WN_ITER=1 TM=8 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (224.3) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1040.2) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000060) s, performance: (4452.7) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000116) s, performance: (18532.5) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000520) s, performance: (33042.0) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004045) s, performance: (33979.1) GFLOPS. size: (4096)
+(6305/73728): BK=8 BM=128 BN=64 WM=32 WN=64 WN_ITER=2 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (225.4) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000032) s, performance: (1042.6) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000060) s, performance: (4461.3) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000115) s, performance: (18597.6) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000477) s, performance: (36028.5) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003746) s, performance: (36688.5) GFLOPS. size: (4096)
+(6313/73728): BK=8 BM=128 BN=64 WM=32 WN=64 WN_ITER=2 TM=8 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (221.7) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000033) s, performance: (1029.8) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000061) s, performance: (4403.5) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000117) s, performance: (18321.1) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000494) s, performance: (34770.8) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.003851) s, performance: (35690.2) GFLOPS. size: (4096)
+(6337/73728): BK=8 BM=128 BN=64 WM=32 WN=64 WN_ITER=4 TM=4 TN=4 NUM_THREADS=128
+Running kernel 10 on device 0.
+Device ID: 0
+    Name: NVIDIA H100 80GB HBM3
+    Compute Capability: 9.0
+    memoryBusWidth: 5120
+    maxThreadsPerBlock: 1024
+    maxThreadsPerMultiProcessor: 2048
+    maxRegsPerBlock: 65536
+    maxRegsPerMultiProcessor: 65536
+    totalGlobalMem: 81007MB
+    sharedMemPerBlock: 48KB
+    sharedMemPerMultiprocessor: 228KB
+    totalConstMem: 64KB
+    multiProcessorCount: 132
+    Warp Size: 32
+Max size: 4096
+dimensions(m=n=k) 128, alpha: 0.5, beta: 3
+Average elapsed time: (0.000019) s, performance: (221.5) GFLOPS. size: (128)
+dimensions(m=n=k) 256, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000033) s, performance: (1031.9) GFLOPS. size: (256)
+dimensions(m=n=k) 512, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000061) s, performance: (4431.3) GFLOPS. size: (512)
+dimensions(m=n=k) 1024, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000116) s, performance: (18439.1) GFLOPS. size: (1024)
+dimensions(m=n=k) 2048, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.000526) s, performance: (32646.5) GFLOPS. size: (2048)
+dimensions(m=n=k) 4096, alpha: 0.5, beta: 3.0
+Average elapsed time: (0.004097) s, performance: (33546.2) GFLOPS. size: (4096)
