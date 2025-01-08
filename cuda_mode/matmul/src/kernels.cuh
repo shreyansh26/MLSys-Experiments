@@ -6,3 +6,4 @@
 #include "kernels/04_1d_blocktiling.cuh"
 #include "kernels/05_2d_blocktiling.cuh"
 #include "kernels/06_vectorize.cuh"
+#include "kernels/10_cuda_warptiling.cuh"
