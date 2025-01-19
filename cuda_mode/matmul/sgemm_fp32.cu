@@ -28,9 +28,9 @@ int main(int argc, char **argv) {
 
     // get environment variable for device
     int deviceIdx = 0;
-    if (getenv("DEVICE") != NULL) {
-        deviceIdx = atoi(getenv("DEVICE"));
-    }
+    // if (getenv("DEVICES") != NULL) {
+    //     deviceIdx = atoi(getenv("DEVICES"));
+    // }
     cudaCheck(cudaSetDevice(deviceIdx));
 
     printf("Running kernel %d on device %d.\n", kernel_num, deviceIdx);
@@ -72,9 +72,9 @@ int main(int argc, char **argv) {
     C_orig = (float *)malloc(sizeof(float) * max_size * max_size);
     C_ref = (float *)malloc(sizeof(float) * max_size * max_size);
 
-    randomize_matrix(A, max_size * max_size);
-    randomize_matrix(B, max_size * max_size);
-    randomize_matrix(C, max_size * max_size);
+    randomize_matrix<float>(A, max_size * max_size);
+    randomize_matrix<float>(B, max_size * max_size);
+    randomize_matrix<float>(C, max_size * max_size);
     memcpy(C_orig, C, sizeof(float) * max_size * max_size);
 
     cudaCheck(cudaMalloc((void **)&A_d, sizeof(float) * max_size * max_size));
@@ -102,22 +102,22 @@ int main(int argc, char **argv) {
             cudaMemcpy(C, C_d, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
             cudaMemcpy(C_ref, C_ref_d, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
 
-            if(!verify_matrix(C_ref, C, m * n)) {
+            if(!verify_matrix<float>(C_ref, C, m * n)) {
                 std::cout << "Failed to pass the correctness verification against NVIDIA cuBLAS." << std::endl;
                 if(m <= 128) {
                     std::cout << " Logging faulty output into " << errLogFile << "\n";
                     std::ofstream fs;
                     fs.open(errLogFile);
                     fs << "A:\n";
-                    print_matrix(A, m, k, fs);
+                    print_matrix<float>(A, m, k, fs);
                     fs << "B:\n";
-                    print_matrix(B, k, n, fs);
+                    print_matrix<float>(B, k, n, fs);
                     fs << "C_orig:\n";
-                    print_matrix(C_orig, m, n, fs);
+                    print_matrix<float>(C_orig, m, n, fs);
                     fs << "Should (Cublas):\n";
-                    print_matrix(C_ref, m, n, fs);
+                    print_matrix<float>(C_ref, m, n, fs);
                     fs << "Kernel out:\n";
-                    print_matrix(C, m, n, fs);
+                    print_matrix<float>(C, m, n, fs);
                 }
                 exit(EXIT_FAILURE);
             }
