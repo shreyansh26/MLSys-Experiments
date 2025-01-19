@@ -41,9 +41,17 @@ bool verify_matrix(T *matRef, T *matOut, int N) {
     int i;
     for(i = 0; i < N; i++) {
         diff = std::fabs((float)matRef[i] - (float)matOut[i]);
-        if(diff > 0.01) {
-            printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f) at %d\n", (float)matRef[i], (float)matOut[i], diff, i);
-            return false;
+        if(std::is_same<T, half>::value) {
+            if(diff > 0.5) {
+                printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f) at %d\n", (float)matRef[i], (float)matOut[i], diff, i);
+                return false;
+            }
+        } 
+        else {
+            if(diff > 0.01) {
+                printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f) at %d\n", (float)matRef[i], (float)matOut[i], diff, i);
+                return false;
+            }
         }
     }
     return true;
