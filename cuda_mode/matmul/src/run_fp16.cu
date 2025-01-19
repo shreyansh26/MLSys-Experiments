@@ -9,14 +9,25 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, half alpha, half *A,
     // C (row-major) = C^T (column-major)
     //  = (B^T @ A^T) (column-major)
     //  = A @ B (row-major)
-    cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, 
-                &alpha, 
-                B, CUDA_R_16F, N, 
-                A, CUDA_R_16F, K, 
-                &beta, 
-                C, CUDA_R_16F, N, 
-                CUBLAS_COMPUTE_16F,
-                CUBLAS_GEMM_DEFAULT);
+    // cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, 
+    //             &alpha, 
+    //             B, CUDA_R_16F, N, 
+    //             A, CUDA_R_16F, K, 
+    //             &beta, 
+    //             C, CUDA_R_16F, N, 
+    //             CUBLAS_COMPUTE_16F,
+    //             CUBLAS_GEMM_DEFAULT);
+
+    cublasStatus_t status = cublasHgemm(handle,
+        CUBLAS_OP_N,
+        CUBLAS_OP_N,
+        N, M, K,
+        &alpha,
+        B, N,
+        A, K,
+        &beta,
+        C, N
+    );
 }
 
 void run_kernel_fp16(int kernel_num, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C, cublasHandle_t handle) {
