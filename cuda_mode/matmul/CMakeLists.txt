@@ -38,10 +38,21 @@ aux_source_directory(${PROJECT_SOURCE_DIR}/src SRC) # Gather all source files fr
 
 message(STATUS "Source files found: ${SRC}")
 
-# Generate executable for sgemm
-add_executable(sgemm sgemm.cu ${SRC}) # Create the sgemm executable from sgemm.cu and other source files
-set_target_properties(sgemm PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY}) # Set the CUDA architectures for the sgemm target
-target_link_libraries(sgemm ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES}) # Link CUDA and cuBLAS libraries to the sgemm executable
+# Set Precision option
+set(BUILD_PRECISION "FP32" CACHE STRING "Precision to build (FP32 or FP16)")
+set_property(CACHE BUILD_PRECISION PROPERTY STRINGS FP32 FP16)
+
+if(BUILD_PRECISION STREQUAL "FP32")
+    add_executable(sgemm_fp32 sgemm_fp32.cu ${SRC})
+    set_target_properties(sgemm_fp32 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
+    target_link_libraries(sgemm_fp32 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+elseif(BUILD_PRECISION STREQUAL "FP16")
+    add_executable(sgemm_fp16 sgemm_fp16.cu ${SRC})
+    set_target_properties(sgemm_fp16 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
+    target_link_libraries(sgemm_fp16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+else()
+    message(FATAL_ERROR "Unknown PRECISION: ${BUILD_PRECISION}. Use FP32 or FP16.")
+endif()
 
 # # Generate executable for cuBLAS_sgemm
 # add_executable(cuBLAS_sgemm cuBLAS_sgemm.cu ) # Create the cuBLAS_sgemm executable from cuBLAS_sgemm.cu
