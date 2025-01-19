@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
                     fs << "Should (Cublas):\n";
                     print_matrix<half>(C_ref, m, n, fs);
                     fs << "Kernel out:\n";
-                    print_matrix<half>(C, m, n, fs);
+                    print_matrix<half>(D, m, n, fs);
                 }
                 exit(EXIT_FAILURE);
             }
