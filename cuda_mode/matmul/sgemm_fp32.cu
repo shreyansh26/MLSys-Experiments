@@ -6,7 +6,7 @@
 #include <vector>
 #include <iomanip>
 
-#include <run.cuh>
+#include <run_fp32.cuh>
 #include <matrix_utils.cuh>
 
 #define cudaCheck(val) check_cuda((val), #val, __FILE__, __LINE__)

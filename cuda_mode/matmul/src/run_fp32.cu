@@ -1,4 +1,4 @@
-#include "run.cuh"
+#include "run_fp32.cuh"
 #include "kernels.cuh"
 
 void check_cuda(cudaError_t err, const char* const func, const char* const file, const int line) {
@@ -40,7 +40,7 @@ void cuda_device_info() {
 };
 
 // A is MxK, B is KxN, C is MxN (in row major order)
-void run_cublas_fp32(cublasHandle_t handle, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
+void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
     // cuBLAS uses column-major order. So we change the order of our row-major A & B, since (B^T*A^T)^T = (A*B)
     // This runs cuBLAS in full fp32 mode
     // C (row-major) = C^T (column-major)
@@ -172,7 +172,7 @@ void run_kernel_fp32(int kernel_num, int M, int N, int K, float alpha, float *A,
     switch (kernel_num) {
         case 0:
             // std::cout << "cuBLAS FP32" << std::endl;
-            run_cublas_fp32(handle, M, N, K, alpha, A, B, beta, C);
+            run_cublas(handle, M, N, K, alpha, A, B, beta, C);
             break;
         case 1:
             // std:: cout << "Kernel 1 - Naive" << std::endl;
