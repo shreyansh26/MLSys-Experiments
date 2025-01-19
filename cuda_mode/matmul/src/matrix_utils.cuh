@@ -5,9 +5,13 @@
 #include <cstdlib>
 #include <iomanip>
 #include <sys/time.h>
+#include <cuda_fp16.h>
 
-void randomize_matrix(float *mat, int N);
+template <typename T>
+void randomize_matrix(T *mat, int N);
 
-void print_matrix(const float *A, int M, int N, std::ofstream &fs);
+template <typename T>
+void print_matrix(const T *A, int M, int N, std::ofstream &fs);
 
-bool verify_matrix(float *mat1, float *mat2, int N);
+template <typename T>
+bool verify_matrix(T *mat1, T *mat2, int N);

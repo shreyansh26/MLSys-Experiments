@@ -1,43 +1,6 @@
 #include "run_fp32.cuh"
-#include "kernels.cuh"
-
-void check_cuda(cudaError_t err, const char* const func, const char* const file, const int line) {
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA Runtime Error at: " << file << ":" << line << std::endl;
-        std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
-        std::exit(EXIT_FAILURE);
-    }
-}
-
-void cuda_device_info() {
-  int deviceId;
-
-  cudaGetDevice(&deviceId);
-
-  cudaDeviceProp props{};
-  cudaGetDeviceProperties(&props, deviceId);
-
-  printf("Device ID: %d\n\
-    Name: %s\n\
-    Compute Capability: %d.%d\n\
-    memoryBusWidth: %d\n\
-    maxThreadsPerBlock: %d\n\
-    maxThreadsPerMultiProcessor: %d\n\
-    maxRegsPerBlock: %d\n\
-    maxRegsPerMultiProcessor: %d\n\
-    totalGlobalMem: %zuMB\n\
-    sharedMemPerBlock: %zuKB\n\
-    sharedMemPerMultiprocessor: %zuKB\n\
-    totalConstMem: %zuKB\n\
-    multiProcessorCount: %d\n\
-    Warp Size: %d\n",
-         deviceId, props.name, props.major, props.minor, props.memoryBusWidth,
-         props.maxThreadsPerBlock, props.maxThreadsPerMultiProcessor,
-         props.regsPerBlock, props.regsPerMultiprocessor,
-         props.totalGlobalMem / 1024 / 1024, props.sharedMemPerBlock / 1024,
-         props.sharedMemPerMultiprocessor / 1024, props.totalConstMem / 1024,
-         props.multiProcessorCount, props.warpSize);
-};
+#include "kernels_fp32.cuh"
+#include "cuda_utils.cuh"
 
 // A is MxK, B is KxN, C is MxN (in row major order)
 void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
@@ -53,11 +16,7 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, float *
                 &beta, 
                 C, CUDA_R_32F, N, 
                 CUBLAS_COMPUTE_32F,
-                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-}
-
-int cdiv(int a, int b) {
-    return (a + b - 1) / b;
+                CUBLAS_GEMM_DEFAULT);
 }
 
 void run_sgemm_naive(int M, int N, int K, float alpha, float *A, float *B, float beta, float *C) {
