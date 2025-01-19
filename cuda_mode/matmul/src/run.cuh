@@ -13,4 +13,4 @@ void check_cuda(cudaError_t err, const char* const func, const char* const file,
 
 void cuda_device_info();
 
-void run_kernel(int kernel_num, int m, int n, int k, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle);
+void run_kernel_fp32(int kernel_num, int m, int n, int k, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle);

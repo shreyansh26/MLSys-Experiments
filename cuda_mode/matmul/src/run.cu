@@ -168,7 +168,7 @@ void run_sgemm_cuda_warptiling(int M, int N, int K, float alpha, float *A, float
     sgemm_warptiling<K10_BM, K10_BN, K10_BK, K10_WM, K10_WN, K10_WNITER, K10_TM, K10_TN, K10_NUM_THREADS><<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
 }
 
-void run_kernel(int kernel_num, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle) {
+void run_kernel_fp32(int kernel_num, int M, int N, int K, float alpha, float *A, float *B, float beta, float *C, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
             // std::cout << "cuBLAS FP32" << std::endl;
