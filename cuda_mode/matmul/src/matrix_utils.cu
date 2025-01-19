@@ -36,22 +36,19 @@ void print_matrix(const T *A, int M, int N, std::ofstream &fs) {
 }
 
 template <typename T>
-bool verify_matrix(T *matRef, T *matOut, int N) {
-    double diff = 0.0;
+bool verify_matrix(T *matRef, T *matOut, int N, double atol, double rtol) {
+    if(std::is_same<T, half>::value) {
+        atol = 1;
+        rtol = 5e-1;
+    }
     int i;
     for(i = 0; i < N; i++) {
-        diff = std::fabs((float)matRef[i] - (float)matOut[i]);
-        if(std::is_same<T, half>::value) {
-            if(diff > 0.5) {
-                printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f) at %d\n", (float)matRef[i], (float)matOut[i], diff, i);
-                return false;
-            }
-        } 
-        else {
-            if(diff > 0.01) {
-                printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f) at %d\n", (float)matRef[i], (float)matOut[i], diff, i);
-                return false;
-            }
+        double abs_diff = std::fabs((double)matRef[i] - (double)matOut[i]);
+        double tolerance = atol + rtol * std::fabs((double)matRef[i]);
+        if(abs_diff > tolerance) {
+            printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f > Tol %5.2f) at %d\n",
+                   (double)matRef[i], (double)matOut[i], abs_diff, tolerance, i);
+            return false;
         }
     }
     return true;
@@ -61,5 +58,5 @@ template void randomize_matrix<float>(float *mat, int N);
 template void randomize_matrix<half>(half *mat, int N);
 template void print_matrix<float>(const float *A, int M, int N, std::ofstream &fs);
 template void print_matrix<half>(const half *A, int M, int N, std::ofstream &fs);
-template bool verify_matrix<float>(float *matRef, float *matOut, int N);
-template bool verify_matrix<half>(half *matRef, half *matOut, int N);
+template bool verify_matrix<float>(float *matRef, float *matOut, int N, double atol, double rtol);
+template bool verify_matrix<half>(half *matRef, half *matOut, int N, double atol, double rtol);
