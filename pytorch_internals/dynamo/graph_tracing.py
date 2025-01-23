@@ -1,5 +1,5 @@
 # https://pytorch.org/docs/main/torch.compiler_dynamo_deepdive.html
-# TORCH_LOGS=graph_code python tracing_basic.py
+# TORCH_LOGS=graph_code python graph_tracing.py
 import torch
 
 @torch.compile
