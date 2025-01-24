@@ -1,14 +1,14 @@
 # https://pytorch.org/docs/main/torch.compiler_dynamo_deepdive.html
-# TORCH_LOGS=graph_code,graph_sizes python guards.py
+# TORCH_LOGS=graph_code,graph_sizes python mark_dynamic.py
 import torch
 
 def fn(a, b):
     return a.shape[0] * a * b
 
 arg1 = torch.randn(4, 3)
-# torch._dynamo.mark_dynamic(arg1, 0, min=1, max=10)
+# torch._dynamo.mark_dynamic(arg1, 0)
 
-compiled_fn = torch.compile(fn, dynamic=True)
+compiled_fn = torch.compile(fn)
 out = compiled_fn(arg1, torch.randn(4, 3))
 
 new_arg1 = torch.randn(8, 3)
@@ -17,3 +17,17 @@ out = compiled_fn(new_arg1, torch.randn(8, 3))
 # Another graph generated in case of a dimension being 1 or 0
 new_arg1 = torch.randn(1, 3)
 out = compiled_fn(new_arg1, torch.randn(1, 3))
+
+
+# def fn2(a, b):
+#     c = torch.cat([a, b], dim=0)
+#     return c.shape[0] * c
+
+# arg1 = torch.randn(4, 3)
+# arg2 = torch.randn(4, 3)
+# torch._dynamo.mark_dynamic(arg1, 0)
+# torch._dynamo.mark_dynamic(arg2, 0)
+
+# # Works fine
+# compiled_fn = torch.compile(fn2)
+# out = compiled_fn(arg1, arg2)
