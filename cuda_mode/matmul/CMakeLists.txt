@@ -53,13 +53,3 @@ elseif(BUILD_PRECISION STREQUAL "FP16")
 else()
     message(FATAL_ERROR "Unknown PRECISION: ${BUILD_PRECISION}. Use FP32 or FP16.")
 endif()
-
-# # Generate executable for cuBLAS_sgemm
-# add_executable(cuBLAS_sgemm cuBLAS_sgemm.cu ) # Create the cuBLAS_sgemm executable from cuBLAS_sgemm.cu
-# set_target_properties(cuBLAS_sgemm PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY}) # Set the CUDA architectures for the cuBLAS_sgemm target
-# target_link_libraries(cuBLAS_sgemm ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES}) # Link CUDA and cuBLAS libraries to the cuBLAS_sgemm executable
-
-# # Generate executable for simplest_kernel
-# add_executable(simplest_kernel simplest_kernel.cu) # Create the simplest_kernel executable from simplest_kernel.cu
-# set_target_properties(simplest_kernel PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY}) # Set the CUDA architectures for the simplest_kernel target
-# target_link_libraries(simplest_kernel ${CUDA_LIBRARIES}) # Link CUDA libraries to the simplest_kernel executable
