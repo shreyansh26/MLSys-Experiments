@@ -14,12 +14,15 @@
 const std::string errLogFile = "matrixValidationFailure.txt";
 
 void gemm_cpu_ref(int m, int n, int k, half alpha, half *A, half *B, half beta, half *C) {
+    float alpha_f = __half2float(alpha);
+    float beta_f = __half2float(beta);
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            C[i * n + j] = beta * C[i * n + j];
-            for (int l = 0; l < k; l++) {
-                C[i * n + j] += alpha * A[i * k + l] * B[l * n + j];
+            float c = beta_f * __half2float(C[i * n + j]);
+            for(int l = 0; l < k; l++) {
+                c += alpha_f * __half2float(A[i * k + l]) * __half2float(B[l * n + j]);
             }
+            C[i * n + j] = __float2half(c);
         }
     }
 }
