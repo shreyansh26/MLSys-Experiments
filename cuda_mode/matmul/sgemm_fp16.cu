@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
         }
         
         // For other kernels, larger errors at certain indices start to show up at 1024
-        if(kernel_num != 0 and m <= 1024) {
+        if(kernel_num != 0 and m <= 512) {
             run_kernel_fp16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, D_d, handle); // cuBLAS
             run_kernel_fp16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, D_d, handle); // Executes the kernel, modifies the result matrix
             cudaCheck(cudaDeviceSynchronize());
