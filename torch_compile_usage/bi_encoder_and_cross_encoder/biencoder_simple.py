@@ -60,11 +60,16 @@ def basic_load_models():
     return biencoder, tokenizer
 
 def basic_get_bienc_pred(biencoder, tokenizer, sentences, batch_size=32):
-    embeddings = biencoder.encode(sentences, batch_size=batch_size, convert_to_tensor=True)
+    cleaned_sentences = [resub_utterance(s) for s in sentences]
+    embeddings = biencoder.encode(cleaned_sentences, batch_size=batch_size, convert_to_tensor=True)
     return embeddings
 
 def main():
-    biencoder, tokenizer = load_models()
+    st = False
+    if st:
+        biencoder, tokenizer = basic_load_models()
+    else:
+        biencoder, tokenizer = load_models()
 
     sentences = [
         f"Sentence A {i}" + "example1 " * random.randint(128, 256)
@@ -74,11 +79,17 @@ def main():
     print(tokenizer(sentences[1], return_tensors="pt").input_ids.shape)
 
     print("Warming up...")
-    _ = get_bienc_pred(biencoder, tokenizer, sentences[:128], batch_size=32)
+    if st:
+        _ = basic_get_bienc_pred(biencoder, tokenizer, sentences[:128], batch_size=32)
+    else:
+        _ = get_bienc_pred(biencoder, tokenizer, sentences[:128], batch_size=32)
 
     print("Starting benchmark on full dataset...")
     start = time.time()
-    embeddings = get_bienc_pred(biencoder, tokenizer, sentences, batch_size=32)
+    if st:
+        embeddings = basic_get_bienc_pred(biencoder, tokenizer, sentences, batch_size=32)
+    else:
+        embeddings = get_bienc_pred(biencoder, tokenizer, sentences, batch_size=32)
     end = time.time()
     print(f"Inference time: {end - start:.4f} seconds")
 
@@ -90,7 +101,10 @@ def main():
     embeddings_cpu = embeddings.cpu().numpy()
     
     # Save embeddings to a file
-    np.save("outputs/simple_embeddings.npy", embeddings_cpu)
+    if st:
+        np.save("outputs/basic_simple_embeddings.npy", embeddings_cpu)
+    else:
+        np.save("outputs/simple_embeddings.npy", embeddings_cpu)
 
 if __name__ == "__main__":
     main() 
