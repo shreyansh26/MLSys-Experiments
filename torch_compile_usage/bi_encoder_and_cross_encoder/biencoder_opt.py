@@ -1,7 +1,6 @@
 import time
 import re
 import torch
-from SentenceTransformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModel
 import random
 import torch.nn.functional as F
@@ -30,7 +29,7 @@ def load_models():
     biencoder.eval()
 
     print("Compiling models")
-    biencoder.forward = torch.compile(biencoder.forward, mode="max-autotune", dynamic=True)
+    biencoder.forward = torch.compile(biencoder.forward, mode="max-autotune")
 
     return biencoder, tokenizer
 
@@ -81,7 +80,7 @@ def main():
     end = time.time()
     print(f"Inference time: {end - start:.4f} seconds")
 
-    print("\nSample scores from biencoder_1:")
+    print("\nSample scores from biencoder:")
     print(embeddings.shape)
     print(embeddings[0].shape)
 

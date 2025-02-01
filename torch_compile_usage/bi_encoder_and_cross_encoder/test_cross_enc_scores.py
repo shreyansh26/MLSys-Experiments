@@ -16,3 +16,6 @@ print(np.abs(simple_scores1 - opt_scores1).sum())
 print(np.abs(simple_scores1 - opt_scores1).mean())
 print(np.abs(simple_scores1 - opt_scores1).std())
 print(np.abs(simple_scores2 - opt_scores2).sum())
+print(np.abs(simple_scores2 - opt_scores2).mean())
+print(np.abs(simple_scores2 - opt_scores2).std())
+

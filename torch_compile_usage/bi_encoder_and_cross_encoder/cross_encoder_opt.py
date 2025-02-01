@@ -31,6 +31,7 @@ def load_models():
 
     print("Compiling models")
     cross_encoder_1.model = torch.compile(cross_encoder_1.model, mode="max-autotune", dynamic=True)
+    # cross_encoder_2.model = torch.compile(cross_encoder_2.model, mode="max-autotune", dynamic=True)
 
     return cross_encoder_1, cross_encoder_2
 
