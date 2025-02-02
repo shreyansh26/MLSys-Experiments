@@ -134,8 +134,8 @@ __global__ void hierarchical_tiling(half* A, half* B, half* C, half* D, const fl
     //////////////
     // epilogue //
     //////////////
-    half alpha_ = (half)alpha;
-    half beta_ = (half)beta;
+    half alpha_ = __float2half(alpha);
+    half beta_  = __float2half(beta);
     half C_register[mma_tiles_per_warp_m][mma_tiles_per_warp_n][4];
     
     // calculate pointers for this warps C and D tiles
@@ -150,10 +150,14 @@ __global__ void hierarchical_tiling(half* A, half* B, half* C, half* D, const fl
             ldmatrix_m16n8_gmem(C_mma_tile, C_register[mma_m][mma_n], N * sizeof(half));
             
             // scale C by beta
-            acc_register_[mma_m][mma_n][0] = acc_register_[mma_m][mma_n][0] * alpha_ + C_register[mma_m][mma_n][0] * beta_;
-            acc_register_[mma_m][mma_n][1] = acc_register_[mma_m][mma_n][1] * alpha_ + C_register[mma_m][mma_n][1] * beta_;
-            acc_register_[mma_m][mma_n][2] = acc_register_[mma_m][mma_n][2] * alpha_ + C_register[mma_m][mma_n][2] * beta_;
-            acc_register_[mma_m][mma_n][3] = acc_register_[mma_m][mma_n][3] * alpha_ + C_register[mma_m][mma_n][3] * beta_;
+            acc_register_[mma_m][mma_n][0] = __hadd(__hmul(acc_register_[mma_m][mma_n][0], alpha_),
+                                                   __hmul(C_register[mma_m][mma_n][0], beta_));
+            acc_register_[mma_m][mma_n][1] = __hadd(__hmul(acc_register_[mma_m][mma_n][1], alpha_),
+                                                   __hmul(C_register[mma_m][mma_n][1], beta_));
+            acc_register_[mma_m][mma_n][2] = __hadd(__hmul(acc_register_[mma_m][mma_n][2], alpha_),
+                                                   __hmul(C_register[mma_m][mma_n][2], beta_));
+            acc_register_[mma_m][mma_n][3] = __hadd(__hmul(acc_register_[mma_m][mma_n][3], alpha_),
+                                                   __hmul(C_register[mma_m][mma_n][3], beta_));
         }
     }
 
