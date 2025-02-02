@@ -3,66 +3,8 @@
 #include <cassert>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-
-__device__ __forceinline__ void tileMemcpy(half* src, half* dst, const unsigned int src_stride, const unsigned int tile_rows, const unsigned int tile_cols) {
-    // flatten out 2d grid of threads into in order of increasing threadIdx.x
-    const unsigned int thread_idx = threadIdx.y * blockDim.x + threadIdx.x;
-    const unsigned int num_threads = blockDim.x * blockDim.y;
-    
-    // # of threads is multiple of # of columns in the tile
-    assert(num_threads % tile_cols == 0);
-    
-    // assign each thread a row/column in the tile, calculate the column step
-    const unsigned int row_step = num_threads / tile_cols;
-    const unsigned int thread_row = thread_idx / tile_cols;
-    const unsigned int thread_col = thread_idx % tile_cols;
-    
-    for(unsigned int r = thread_row; r < tile_rows; r+=row_step) {
-        dst[r * tile_cols + thread_col] =  src[r * src_stride + thread_col];
-    }
-}
-
-__device__ __forceinline__ uint32_t cvta_to_shared_u32(const void *pointer) {
-    uint32_t address;
-    asm("{\n\t"
-        "  .reg .u64 u64addr;\n\t"
-        "  cvta.to.shared.u64 u64addr, %1;\n\t"
-        "  cvt.u32.u64 %0, u64addr;\n\t"
-        "}"
-        : "=r"(address)
-        : "l"(pointer));
-    return address;
-}
-
-// loads an MMA tile directly from global memory
-// this is innefficient, access pattern results in bad coalescing
-__device__ __forceinline__ void ldmatrix_m16n8_gmem(half* src, half (&reg)[4], unsigned int src_stride_bytes) {
-    const unsigned int laneIdx = threadIdx.x % 32;
-    uint32_t (&reg_) [2] = reinterpret_cast<uint32_t(&)[2]>(reg);
-    uint32_t* src_ptr = reinterpret_cast<uint32_t*>(src);
-    src_stride_bytes /= sizeof(uint32_t);
-    unsigned int fragment_row = laneIdx / 4;
-    const unsigned int fragment_col = laneIdx % 4;
-    
-    // 4 adjacent threads storing 4 bytes each == 16 byte transactions
-    reg_[0] = src_ptr[fragment_row * src_stride_bytes + fragment_col];
-    fragment_row += 8;
-    reg_[1] = src_ptr[fragment_row * src_stride_bytes + fragment_col];
-}
-
-__device__ __forceinline__ void stmatrix_m16n8(half* dst, half (&reg)[4], unsigned int dst_stride_bytes) {
-    const unsigned int laneIdx = threadIdx.x % 32;
-    uint32_t (&reg_) [2] = reinterpret_cast<uint32_t(&)[2]>(reg);
-    uint32_t* dst_ptr = reinterpret_cast<uint32_t*>(dst);
-    dst_stride_bytes /= sizeof(uint32_t);
-    unsigned int fragment_row = laneIdx / 4;
-    const unsigned int fragment_col = laneIdx % 4;
-    
-    // 4 adjacent threads storing 4 bytes each == 16 byte transactions
-    dst_ptr[fragment_row * dst_stride_bytes + fragment_col] = reg_[0];
-    fragment_row += 8;
-    dst_ptr[fragment_row * dst_stride_bytes + fragment_col] = reg_[1];
-}
+#include "memcpy_utils.cuh"
+#include "load_store_utils.cuh"
 
 template <unsigned int BM_dim, unsigned int BN_dim, unsigned int BK_dim, unsigned int WM_dim, unsigned int WN_dim, unsigned int WK_dim, unsigned int NUM_THREADS>
 __global__ void hierarchical_tiling(half* A, half* B, half* C, half* D, const float alpha, const float beta, const unsigned int M, const unsigned int N, unsigned int K) {
