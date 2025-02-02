@@ -13,7 +13,7 @@
 
 const std::string errLogFile = "matrixValidationFailure.txt";
 
-void gemm_cpu_ref(int m, int n, int k, half alpha, half *A, half *B, half beta, half *C) {
+void gemm_cpu_ref(int m, int n, int k, float alpha, half *A, half *B, float beta, half *C) {
     float alpha_f = __half2float(alpha);
     float beta_f = __half2float(beta);
     for (int i = 0; i < m; i++) {
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     max_size = SIZE[SIZE.size() - 1];
     std::cout << "Max size: " << max_size << std::endl;
 
-    half alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
+    float alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
 
     half *A = nullptr, *B = nullptr, *C = nullptr, *D = nullptr, *C_ref = nullptr, *C_orig = nullptr, *C_cpu_ref = nullptr; // host matrices
     half *A_d = nullptr, *B_d = nullptr, *C_d = nullptr, *C_ref_d = nullptr, *D_d = nullptr; // device matrices

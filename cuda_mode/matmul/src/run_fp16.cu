@@ -5,7 +5,7 @@
 #define cudaCheck(val) check_cuda((val), #val, __FILE__, __LINE__)
 
 // A is MxK, B is KxN, C is MxN (in row major order)
-void run_cublas(cublasHandle_t handle, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C) {
+void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C) {
     // cuBLAS uses column-major order. So we change the order of our row-major A & B, since (B^T*A^T)^T = (A*B)
     // This runs cuBLAS in full fp16 mode
     // C (row-major) = C^T (column-major)
@@ -21,19 +21,21 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, half alpha, half *A,
     //             CUBLAS_COMPUTE_16F,
     //             CUBLAS_GEMM_DEFAULT);
 
+    half alpha_h = __float2half(alpha);
+    half beta_h = __float2half(beta);
     cublasStatus_t status = cublasHgemm(handle,
         CUBLAS_OP_N,
         CUBLAS_OP_N,
         N, M, K,
-        &alpha,
+        &alpha_h,
         B, N,
         A, K,
-        &beta,
+        &beta_h,
         C, N
     );
 }
 
-void hierarchical_tiling_launch(cublasHandle_t handle, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C, half *D) {
+void hierarchical_tiling_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
     constexpr unsigned int BM_dim = 128;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
@@ -76,7 +78,7 @@ void hierarchical_tiling_launch(cublasHandle_t handle, int M, int N, int K, half
         );
 }
 
-void hierarchical_tiling_unrolled_launch(cublasHandle_t handle, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C, half *D) {
+void hierarchical_tiling_unrolled_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
     constexpr unsigned int BM_dim = 128;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
@@ -119,7 +121,7 @@ void hierarchical_tiling_unrolled_launch(cublasHandle_t handle, int M, int N, in
         );
 }
 
-void hierarchical_tiling_unrolled_vectorized_launch(cublasHandle_t handle, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C, half *D) {
+void hierarchical_tiling_unrolled_vectorized_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
     constexpr unsigned int BM_dim = 128;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
@@ -162,7 +164,7 @@ void hierarchical_tiling_unrolled_vectorized_launch(cublasHandle_t handle, int M
         );
 }
 
-void run_kernel_fp16(int kernel_num, int M, int N, int K, half alpha, half *A, half *B, half beta, half *C, half *D, cublasHandle_t handle) {
+void run_kernel_fp16(int kernel_num, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
             // std::cout << "cuBLAS FP16" << std::endl;
