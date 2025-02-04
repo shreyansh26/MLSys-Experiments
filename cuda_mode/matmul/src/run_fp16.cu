@@ -36,7 +36,7 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, half *A
 }
 
 void hierarchical_tiling_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
-    constexpr unsigned int BM_dim = 128;
+    constexpr unsigned int BM_dim = 256;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
     
@@ -79,7 +79,7 @@ void hierarchical_tiling_launch(cublasHandle_t handle, int M, int N, int K, floa
 }
 
 void hierarchical_tiling_unrolled_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
-    constexpr unsigned int BM_dim = 128;
+    constexpr unsigned int BM_dim = 256;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
     
@@ -122,7 +122,7 @@ void hierarchical_tiling_unrolled_launch(cublasHandle_t handle, int M, int N, in
 }
 
 void hierarchical_tiling_unrolled_vectorized_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
-    constexpr unsigned int BM_dim = 128;
+    constexpr unsigned int BM_dim = 256;
     constexpr unsigned int BN_dim = 128;
     constexpr unsigned int BK_dim = 64;
     
@@ -164,6 +164,49 @@ void hierarchical_tiling_unrolled_vectorized_launch(cublasHandle_t handle, int M
         );
 }
 
+void shared_memory_swizzling_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
+    constexpr unsigned int BM_dim = 256;
+    constexpr unsigned int BN_dim = 128;
+    constexpr unsigned int BK_dim = 64;
+    
+    constexpr unsigned int WARPS_PER_BLOCK_M = 4;
+    constexpr unsigned int WARPS_PER_BLOCK_N = 2;
+    constexpr unsigned int WARPS_PER_BLOCK_K = 2;
+
+    constexpr unsigned int WM_dim = BM_dim / WARPS_PER_BLOCK_M;
+    constexpr unsigned int WN_dim = BN_dim / WARPS_PER_BLOCK_N;
+    constexpr unsigned int WK_dim = BK_dim / WARPS_PER_BLOCK_K;
+
+    assert(M % BM_dim == 0);
+    assert(N % BN_dim == 0);
+    assert(K % BK_dim == 0);
+    
+    constexpr unsigned int WARP_SIZE = 32;
+    const unsigned int BlocksM = M / BM_dim;
+    const unsigned int BlocksN = N / BN_dim;
+    constexpr unsigned int ThreadsM = WARPS_PER_BLOCK_M;
+    constexpr unsigned int ThreadsN = WARP_SIZE * WARPS_PER_BLOCK_N;
+    constexpr unsigned int NumThreads = ThreadsM * ThreadsN;
+    const unsigned int shmem_bytes = (BM_dim * BK_dim + BK_dim * BN_dim) * sizeof(half);
+
+    dim3 gridDim(BlocksN, BlocksM);
+    dim3 blockDim(ThreadsN, ThreadsM);
+    
+    cudaCheck(cudaFuncSetAttribute(shared_memory_swizzling<BM_dim, BN_dim, BK_dim, WM_dim, WN_dim, WK_dim, NumThreads>, cudaFuncAttributeMaxDynamicSharedMemorySize, 65536)); // set shared memory limit to 64KB which is maximum for sm_75
+
+    shared_memory_swizzling<BM_dim, BN_dim, BK_dim, WM_dim, WN_dim, WK_dim, NumThreads><<<gridDim, blockDim, shmem_bytes>>>(
+            A,
+            B,
+            C,
+            D,
+            alpha,
+            beta,
+            M,
+            N,
+            K
+        );
+}
+
 void run_kernel_fp16(int kernel_num, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
@@ -181,6 +224,10 @@ void run_kernel_fp16(int kernel_num, int M, int N, int K, float alpha, half *A, 
         case 3:
             // std::cout << "Hierarchical Tiling Unrolled and Vectorized Memcpy" << std::endl;
             hierarchical_tiling_unrolled_vectorized_launch(handle, M, N, K, alpha, A, B, beta, C, D);
+            break;
+        case 4:
+            // std::cout << "Shared Memory Swizzling Memcpy" << std::endl;
+            shared_memory_swizzling_launch(handle, M, N, K, alpha, A, B, beta, C, D);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
