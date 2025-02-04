@@ -4,6 +4,14 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+__device__ constexpr unsigned int floor_log2(unsigned int x) {
+    unsigned int result = 0;
+    while (x >>= 1) {
+        result++;
+    }
+    return result;
+}
+
 __device__ __forceinline__ void tileMemcpy(half* src, half* dst, const unsigned int src_stride, const unsigned int tile_rows, const unsigned int tile_cols) {
     // flatten out 2d grid of threads into in order of increasing threadIdx.x
     const unsigned int thread_idx = threadIdx.y * blockDim.x + threadIdx.x;
@@ -65,5 +73,35 @@ __device__ __forceinline__ void tileMemcpyUnrolledVectorized(half* src, half* ds
     #pragma unroll
     for(unsigned int iter = 0; iter < num_iters; iter++) {
         dst_float4[(thread_row + iter * row_step) * TILE_COLS_VECTORIZED + thread_col] =  src_float4[(thread_row + iter * row_step) * src_stride_float4 + thread_col];
+    }
+}
+
+template<unsigned int TILE_ROWS, unsigned int TILE_COLS, unsigned int NUM_THREADS, unsigned int SWIZZLE_BITS>
+__device__ __forceinline__ void tileMemcpySwizzled(half* src, half* dst, const unsigned int src_stride) {
+    const unsigned int SWIZZLE_MASK = 0b111 << SWIZZLE_BITS;
+    // reinterpret src and dst as float4
+    float4* src_float4 = reinterpret_cast<float4*>(src);
+    float4* dst_float4 = reinterpret_cast<float4*>(dst);
+    const unsigned int src_stride_float4 = src_stride / 8;
+    
+    // flatten out 2d grid of threads into in order of increasing threadIdx.x
+    const unsigned int thread_idx = threadIdx.y * blockDim.x + threadIdx.x;
+    
+    // # of threads is multiple of # of columns in the tile
+    const unsigned int TILE_COLS_VECTORIZED = TILE_COLS / 8;
+    assert(NUM_THREADS % TILE_COLS_VECTORIZED == 0);
+    
+    // assign each thread a row/column in the tile, calculate the column step
+    const unsigned int row_step = NUM_THREADS / TILE_COLS_VECTORIZED;
+    unsigned int thread_row = thread_idx / TILE_COLS_VECTORIZED;
+    const unsigned int thread_col = thread_idx % TILE_COLS_VECTORIZED;
+    const unsigned int num_iters = TILE_ROWS / row_step;
+    
+    #pragma unroll
+    for(unsigned int iter = 0; iter < num_iters; iter++) {
+        unsigned int dst_index = (thread_row + iter * row_step) * TILE_COLS_VECTORIZED + thread_col;
+        dst_index = dst_index ^ ((dst_index & SWIZZLE_MASK) >> SWIZZLE_BITS);
+        unsigned int src_index = (thread_row + iter * row_step) * src_stride_float4 + thread_col;
+        dst_float4[dst_index] =  src_float4[src_index];
     }
 }
