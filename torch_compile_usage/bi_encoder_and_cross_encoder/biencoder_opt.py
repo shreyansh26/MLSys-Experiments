@@ -9,6 +9,7 @@ import numpy as np
 torch.backends.cudnn.benchmark = True
 torch._dynamo.config.capture_scalar_outputs = True
 torch.set_float32_matmul_precision('high')
+torch._inductor.config.triton.cudagraph_trees = False
 # torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 random.seed(42)
