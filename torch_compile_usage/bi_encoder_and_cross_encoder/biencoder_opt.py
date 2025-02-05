@@ -5,12 +5,34 @@ from transformers import AutoTokenizer, AutoModel
 import random
 import torch.nn.functional as F
 import numpy as np
+from torch.backends import cuda, cudnn, opt_einsum
+import torch._inductor.config as ind_cfg
 
 torch.backends.cudnn.benchmark = True
 torch._dynamo.config.capture_scalar_outputs = True
 torch.set_float32_matmul_precision('high')
 torch._inductor.config.triton.cudagraph_trees = False
 # torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
+
+ind_cfg.nan_asserts = False
+ind_cfg.dce = True
+ind_cfg.keep_output_stride = False
+ind_cfg.layout_optimization = True
+ind_cfg.shape_padding = True
+ind_cfg.permute_fusion = True
+ind_cfg.max_autotune = True
+ind_cfg.max_autotune_pointwise = True
+ind_cfg.max_autotune_gemm = True
+ind_cfg.memory_planning = True
+ind_cfg.use_mixed_mm = True
+ind_cfg.b2b_gemm_pass = True
+ind_cfg.coordinate_descent_tuning = True
+ind_cfg.coordinate_descent_check_all_directions = True
+
+cudnn.deterministic = False
+torch.use_deterministic_algorithms(False)
+opt_einsum.enabled = True
+opt_einsum.strategy = "dp"
 
 random.seed(42)
 
