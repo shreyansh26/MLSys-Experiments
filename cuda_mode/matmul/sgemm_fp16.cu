@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     cudaEventCreate(&end);
 
     // cuBLAS FLOPs ceiling is reached at 8192
-    std::vector<int> SIZE = {256, 512, 1024, 2048, 4096};
+    std::vector<int> SIZE = {4096};
 
     long m, n, k, max_size;
     max_size = SIZE[SIZE.size() - 1];
@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
     cudaCheck(cudaMemcpy(C_d, C, sizeof(half) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(C_ref_d, C, sizeof(half) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(D_d, D, sizeof(half) * max_size * max_size, cudaMemcpyHostToDevice));
-    int repeat_times = 50;
+    int repeat_times = 10;
     for(int size : SIZE) {
         m = n = k = size;
 

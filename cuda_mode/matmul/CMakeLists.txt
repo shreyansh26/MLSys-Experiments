@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19) # Specify the minimum CMake version required
+cmake_minimum_required(VERSION 3.16) # Specify the minimum CMake version required
 project(NVIDIA_SGEMM_PRACTICE LANGUAGES CXX CUDA) # Define the project name and the languages used (C++ and CUDA)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # Enable the generation of compile_commands.json for tooling support
 
@@ -9,7 +9,7 @@ include(CheckLanguage) # Include the module to check for language support
 check_language(CUDA) # Verify that CUDA language support is available
 
 set(CMAKE_CXX_STANDARD 20) # Set the C++ standard to C++20
-set(CUDA_COMPUTE_CAPABILITY 90) # Define the CUDA compute capability version (e.g., 9.0)
+set(CUDA_COMPUTE_CAPABILITY 75) # Define the CUDA compute capability version (e.g., 9.0)
 
 # In debug mode, add debug symbols to device code
 # IF (Configuration is Debug) AND (Language is CUDA)
