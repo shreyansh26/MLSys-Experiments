@@ -11,4 +11,4 @@ a, b, c, d = [torch.randn(2, 4, requires_grad=True) for _ in range(4)]
 fn = torch.compile(fn)
 ref = fn(a, b, c, d)
 loss = ref.sum()
-loss.backward()
+# loss.backward()
