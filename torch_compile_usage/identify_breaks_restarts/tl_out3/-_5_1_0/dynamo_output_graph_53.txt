@@ -1,0 +1,9 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, L_k_: "Sym(s0)", L_x_: "f32[3, 3][3, 1]cpu"):
+        l_k_ = L_k_
+        l_x_ = L_x_
+        
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:24 in f3, code: out = x * k
+        out: "f32[3, 3][3, 1]cpu" = l_x_ * l_k_;  l_x_ = l_k_ = None
+        return (out,)
+        

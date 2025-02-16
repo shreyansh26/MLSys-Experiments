@@ -1,0 +1,10 @@
+class joint_helper(torch.nn.Module):
+    def forward(self, primals, tangents):
+        primals_1: "f32[3, 3][3, 1]cpu"; tangents_1: "f32[3, 3][3, 1]cpu"; 
+    
+        primals_1, tangents_1, = fx_pytree.tree_flatten_spec([primals, tangents], self._in_spec)
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:15 in torch_dynamo_resume_in_f2_at_15, code: return x * s.item()
+        mul: "f32[3, 3][3, 1]cpu" = torch.ops.aten.mul.Tensor(primals_1, 0.2561222314834595);  primals_1 = None
+        mul_1: "f32[3, 3][3, 1]cpu" = torch.ops.aten.mul.Tensor(tangents_1, 0.2561222314834595);  tangents_1 = None
+        return pytree.tree_unflatten([mul, mul_1], self._out_spec)
+        

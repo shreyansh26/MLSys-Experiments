@@ -1,0 +1,15 @@
+
+TREE_GUARD_MANAGER:
++- RootGuardManager
+| +- DEFAULT_DEVICE: utils_device.CURRENT_DEVICE == None                           # _dynamo/output_graph.py:493 in init_ambient_guards
+| +- GLOBAL_STATE: ___check_global_state()
+| +- TORCH_FUNCTION_MODE_STACK: ___check_torch_function_mode_stack()
+| +- GuardManager: source=L['k'], accessed_by=DictGetItemGuardAccessor('k')
+| | +- TYPE_MATCH: ___check_type_id(L['k'], 7644512)                           
+| +- GuardManager: source=L['x'], accessed_by=DictGetItemGuardAccessor('x')
+| | +- TENSOR_MATCH: check_tensor(L['x'], Tensor, DispatchKeySet(CPU, BackendSelect, ADInplaceOrView, AutogradCPU), torch.float32, device=None, requires_grad=True, size=[None, None], stride=[None, 1])
+| | +- NO_HASATTR: hasattr(L['x'], '_dynamo_dynamic_indices') == False         
++- LAMBDA_GUARD: L['x'].size()[1] == L['x'].size()[0]  # duck sizing added this equality because these variables had the same size 3 (to avoid this specialization, set torch.fx.experimental._config.use_duck_shape = False)
++- LAMBDA_GUARD: L['x'].stride()[0] == L['x'].size()[0]  # (unknown source L['x'].stride()[0], please file a bug)
++- LAMBDA_GUARD: (L['k'] % 2) != 0  # if k % 2 == 0:  # nt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:23 in f3 (_dynamo/variables/tensor.py:1201 in evaluate_expr)
++- LAMBDA_GUARD: 2 <= L['x'].size()[0]  # out = x + k  # nt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:26 in f3 (user code shown is first use of this value--the guard itself is not due user code but due to 0/1 specialization in the framework; to avoid specialization try torch._dynamo.mark_unbacked(tensor, dim))

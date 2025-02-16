@@ -1,0 +1,6 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, tangents_1: "f32[][]cpu"):
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:11 in f2, code: s = x.sum()
+        expand: "f32[3, 3][0, 0]cpu" = torch.ops.aten.expand.default(tangents_1, [3, 3]);  tangents_1 = None
+        return (expand,)
+        

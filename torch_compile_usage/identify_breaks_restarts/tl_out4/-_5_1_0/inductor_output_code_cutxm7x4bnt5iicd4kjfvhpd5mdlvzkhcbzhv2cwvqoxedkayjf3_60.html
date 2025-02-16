@@ -1,0 +1,83 @@
+<pre style="background-color:#ffffff;">
+<span style="font-style:italic;color:#969896;"># AOT ID: [&#39;5_backward&#39;]
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">ctypes </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">c_void_p, c_long, c_int
+</span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">torch
+</span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">math
+</span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">random
+</span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">os
+</span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">tempfile
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">math </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">inf, nan
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.hooks </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">run_intermediate_hooks
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.utils </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">maybe_profile
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.codegen.memory_planning </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">_align </span><span style="font-weight:bold;color:#a71d5d;">as </span><span style="color:#323232;">align
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">device, empty_strided
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.async_compile </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">AsyncCompile
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.select_algorithm </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">extern_kernels
+</span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.codegen.multi_kernel </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">MultiKernelCall
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">aten </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.ops.aten
+</span><span style="color:#323232;">inductor_ops </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.ops.inductor
+</span><span style="color:#323232;">_quantized </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.ops._quantized
+</span><span style="color:#323232;">assert_size_stride </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._dynamo.guards.assert_size_stride
+</span><span style="color:#323232;">empty_strided_cpu </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._dynamo.guards._empty_strided_cpu
+</span><span style="color:#323232;">empty_strided_cuda </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._dynamo.guards._empty_strided_cuda
+</span><span style="color:#323232;">empty_strided_xpu </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._dynamo.guards._empty_strided_xpu
+</span><span style="color:#323232;">reinterpret_tensor </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._dynamo.guards._reinterpret_tensor
+</span><span style="color:#323232;">alloc_from_pool </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.ops.inductor._alloc_from_pool
+</span><span style="color:#323232;">async_compile </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">AsyncCompile()
+</span><span style="color:#323232;">empty_strided_p2p </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">torch.</span><span style="color:#0086b3;">_C</span><span style="color:#323232;">._distributed_c10d._SymmetricMemory.empty_strided_p2p
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">cpp_fused_mul_0 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">async_compile.cpp_pybinding([</span><span style="color:#183691;">&#39;const float*&#39;</span><span style="color:#323232;">, </span><span style="color:#183691;">&#39;float*&#39;</span><span style="color:#323232;">, </span><span style="color:#183691;">&#39;const int64_t&#39;</span><span style="color:#323232;">], </span><span style="color:#183691;">&#39;&#39;&#39;
+</span><span style="color:#183691;">#include &quot;/tmp/torchinductor_shreyansh/2r/c2rnilspx43ivnzu4uieul65kx65dfhfbptbh5og4wk6rqebuxoo.h&quot;
+</span><span style="color:#183691;">extern &quot;C&quot;  void kernel(const float* in_ptr0,
+</span><span style="color:#183691;">                       float* out_ptr0,
+</span><span style="color:#183691;">                       const int64_t ks0)
+</span><span style="color:#183691;">{
+</span><span style="color:#183691;">    {
+</span><span style="color:#183691;">        for(int64_t x0=static_cast&lt;int64_t&gt;(0L); x0&lt;static_cast&lt;int64_t&gt;(9L); x0+=static_cast&lt;int64_t&gt;(16L))
+</span><span style="color:#183691;">        {
+</span><span style="color:#183691;">            {
+</span><span style="color:#183691;">                if(C10_LIKELY(x0 &gt;= static_cast&lt;int64_t&gt;(0L) &amp;&amp; x0 &lt; static_cast&lt;int64_t&gt;(9L)))
+</span><span style="color:#183691;">                {
+</span><span style="color:#183691;">                    auto tmp0 = at::vec::Vectorized&lt;float&gt;::loadu(in_ptr0 + static_cast&lt;int64_t&gt;(x0), static_cast&lt;int64_t&gt;(9L));
+</span><span style="color:#183691;">                    auto tmp1 = ks0;
+</span><span style="color:#183691;">                    auto tmp2 = c10::convert&lt;float&gt;(tmp1);
+</span><span style="color:#183691;">                    auto tmp3 = at::vec::Vectorized&lt;float&gt;(tmp2);
+</span><span style="color:#183691;">                    auto tmp4 = tmp0 * tmp3;
+</span><span style="color:#183691;">                    tmp4.store(out_ptr0 + static_cast&lt;int64_t&gt;(x0), static_cast&lt;int64_t&gt;(9L));
+</span><span style="color:#183691;">                }
+</span><span style="color:#183691;">            }
+</span><span style="color:#183691;">        }
+</span><span style="color:#183691;">    }
+</span><span style="color:#183691;">}
+</span><span style="color:#183691;">&#39;&#39;&#39;</span><span style="color:#323232;">)
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">async_compile.wait(</span><span style="color:#62a35c;">globals</span><span style="color:#323232;">())
+</span><span style="font-weight:bold;color:#a71d5d;">del </span><span style="color:#323232;">async_compile
+</span><span style="color:#323232;">
+</span><span style="font-weight:bold;color:#a71d5d;">def </span><span style="font-weight:bold;color:#323232;">call</span><span style="color:#323232;">(args):
+</span><span style="color:#323232;">    primals_1, tangents_1 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">args
+</span><span style="color:#323232;">    args.clear()
+</span><span style="color:#323232;">    s0 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">primals_1
+</span><span style="color:#323232;">    assert_size_stride(tangents_1, (</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">3</span><span style="color:#323232;">), (</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">1</span><span style="color:#323232;">))
+</span><span style="color:#323232;">    buf0 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">empty_strided_cpu((</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">3</span><span style="color:#323232;">), (</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">1</span><span style="color:#323232;">), torch.float32)
+</span><span style="color:#323232;">    cpp_fused_mul_0(tangents_1, buf0, s0)
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">del </span><span style="color:#323232;">tangents_1
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">return </span><span style="color:#323232;">(</span><span style="color:#0086b3;">None</span><span style="color:#323232;">, buf0, )
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">
+</span><span style="font-weight:bold;color:#a71d5d;">def </span><span style="font-weight:bold;color:#323232;">benchmark_compiled_module</span><span style="color:#323232;">(times</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#0086b3;">10</span><span style="color:#323232;">, repeat</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#0086b3;">10</span><span style="color:#323232;">):
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._dynamo.testing </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">rand_strided
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.utils </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">print_performance
+</span><span style="color:#323232;">    primals_1 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#0086b3;">2
+</span><span style="color:#323232;">    tangents_1 </span><span style="font-weight:bold;color:#a71d5d;">= </span><span style="color:#323232;">rand_strided((</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">3</span><span style="color:#323232;">), (</span><span style="color:#0086b3;">3</span><span style="color:#323232;">, </span><span style="color:#0086b3;">1</span><span style="color:#323232;">), device</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#183691;">&#39;cpu&#39;</span><span style="color:#323232;">, dtype</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#323232;">torch.float32)
+</span><span style="color:#323232;">    fn </span><span style="font-weight:bold;color:#a71d5d;">= lambda</span><span style="color:#323232;">: call([primals_1, tangents_1])
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">return </span><span style="color:#323232;">print_performance(fn, times</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#323232;">times, repeat</span><span style="font-weight:bold;color:#a71d5d;">=</span><span style="color:#323232;">repeat)
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">
+</span><span style="font-weight:bold;color:#a71d5d;">if </span><span style="color:#323232;">__name__ </span><span style="font-weight:bold;color:#a71d5d;">== </span><span style="color:#183691;">&quot;__main__&quot;</span><span style="color:#323232;">:
+</span><span style="color:#323232;">    </span><span style="font-weight:bold;color:#a71d5d;">from </span><span style="color:#323232;">torch._inductor.wrapper_benchmark </span><span style="font-weight:bold;color:#a71d5d;">import </span><span style="color:#323232;">compiled_module_main
+</span><span style="color:#323232;">    compiled_module_main(</span><span style="color:#183691;">&#39;None&#39;</span><span style="color:#323232;">, benchmark_compiled_module)
+</span></pre>

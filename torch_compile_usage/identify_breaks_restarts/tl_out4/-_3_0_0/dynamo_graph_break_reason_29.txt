@@ -1,0 +1,22 @@
+Graph break in user code at /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:17
+Reason: Unsupported: Tensor.item
+User code traceback:
+  File "/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py", line 17, in torch_dynamo_resume_in_f2_at_13
+    return x - s.item()
+
+Traceback (most recent call last):
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/symbolic_convert.py", line 659, in wrapper
+    return inner_fn(self, inst)
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/symbolic_convert.py", line 1658, in CALL_FUNCTION
+    self.call_function(fn, args, {})
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/symbolic_convert.py", line 897, in call_function
+    self.push(fn.call_function(self, args, kwargs))  # type: ignore[arg-type]
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/variables/misc.py", line 1022, in call_function
+    return self.obj.call_method(tx, self.name, args, kwargs)
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/variables/tensor.py", line 583, in call_method
+    result = handler_method(*args, **kwargs)
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/variables/tensor.py", line 838, in method_item
+    unimplemented("Tensor.item")
+  File "/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/exc.py", line 317, in unimplemented
+    raise Unsupported(msg, case_name=case_name)
+torch._dynamo.exc.Unsupported: Tensor.item

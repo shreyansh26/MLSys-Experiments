@@ -1,0 +1,6 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, primals_1: "Sym(s0)", tangents_1: "f32[3, 3][3, 1]cpu"):
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:24 in f3, code: out = x * k
+        mul_1: "f32[3, 3][3, 1]cpu" = torch.ops.aten.mul.Tensor(tangents_1, primals_1);  tangents_1 = primals_1 = None
+        return (None, mul_1)
+        

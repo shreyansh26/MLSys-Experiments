@@ -1,0 +1,14 @@
+
+TREE_GUARD_MANAGER:
++- RootGuardManager
+| +- DEFAULT_DEVICE: utils_device.CURRENT_DEVICE == None                           # _dynamo/output_graph.py:493 in init_ambient_guards
+| +- GLOBAL_STATE: ___check_global_state()
+| +- TORCH_FUNCTION_MODE_STACK: ___check_torch_function_mode_stack()
+| +- GuardManager: source=L['y'], accessed_by=DictGetItemGuardAccessor('y')
+| | +- TENSOR_MATCH: check_tensor(L['y'], Tensor, DispatchKeySet(CPU, BackendSelect, ADInplaceOrView, AutogradCPU), torch.float32, device=None, requires_grad=True, size=[3, 3], stride=[3, 1])
+| | +- NO_HASATTR: hasattr(L['y'], '_dynamo_dynamic_indices') == False         
+| +- GuardManager: source=G, accessed_by=GlobalsGuardAccessor
+| | +- GuardManager: source=G['torch'], accessed_by=DictGetItemGuardAccessor('torch')
+| | | +- ID_MATCH: ___check_obj_id(G['torch'], 140206224061792)                
+| | | +- GuardManager: source=G['torch'].sin, accessed_by=GetAttrGuardAccessor(sin)
+| | | | +- ID_MATCH: ___check_obj_id(G['torch'].sin, 140206220513408)            
