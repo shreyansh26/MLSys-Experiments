@@ -1,0 +1,6 @@
+Graph break in user code at /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:13
+Reason: Data-dependent jump
+User code traceback:
+  File "/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py", line 13, in f2
+    if s > 0:
+

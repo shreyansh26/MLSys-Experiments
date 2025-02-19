@@ -1,0 +1,438 @@
+
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<style>
+
+table td { vertical-align: top; }
+
+.stack-trie { white-space: nowrap; font-family: monospace; }
+.stack-trie ul { padding-left: 1ch;  }
+.stack-trie li { margin-left: 1ch; list-style-type: none;  }
+.stack-trie .marker {
+  cursor: pointer;
+}
+.stack-trie .marker.collapsed::before {
+  content: "+ ";
+}
+.stack-trie .marker:not(.collapsed)::before {
+  content: "- ";
+}
+.stack-trie a { text-decoration: none; }
+.stack-trie a:hover { text-decoration: underline; }
+.status-missing { background-color: purple; color: white; }
+.status-error { background-color: red; color: white; }
+.status-empty { background-color: white; color: black; }
+.status-ok { background-color: green; color: white; }
+.status-break { background-color: lime; color: black; }
+summary::-webkit-details-marker { color: #00ACF3; font-size: 125%; margin-right: 2px; }
+summary:focus { outline-style: none; }
+article > details > summary { font-size: 28px; margin-top: 16px; }
+details > p { margin-left: 24px; }
+details details summary { font-size: 16px; }
+
+</style>
+<script>
+
+  function toggleList(toggleItem) {
+    const listItem = toggleItem.parentNode;
+    const nestedList = listItem.querySelector('ul');
+    if (nestedList) {
+      nestedList.style.display = nestedList.style.display === 'none' ? 'block' : 'none';
+
+      // Toggle the collapse/expand indicator
+      toggleItem.classList.toggle('collapsed');
+    }
+  }
+
+</script>
+<body>
+<div>
+
+<h2>Stack trie</h2>
+<p>
+The <strong>stack trie</strong> is a way of getting a quick orientation on where all the
+compilations in a model take place, esp., if you are compiling a codebase you are unfamiliar with.
+It is a tree of stack frames, for all stacks that triggered PT2 compilation.  If only a single
+stack is in the tree, you will simply see a plain list of frames (most recent call last).  With
+multiple stacks, at every point where two stacks diverge from having a common prefix, we increase
+the indentation of the list and have a separate sub-list per sub-tree.
+</p>
+<p>
+Links to particular compilation are color coded by status:
+<span class="status-ok">[Success]</span>,
+<span class="status-break">[Success with restart (e.g., graph break)]</span>,
+<span class="status-empty">[Empty graph]</span>,
+<span class="status-error">[Error]</span>,
+<span class="status-missing">[Metrics were missing]</span>
+</p>
+<details><summary>Stack</summary><div class='stack-trie'><ul><li>/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:54 in &lt;module&gt;<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+<li><span onclick='toggleList(this)' class='marker'></span>
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:34 in main<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><a href='#[0/0]' class='status-ok'>[0/0]</a> /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:4 in f1<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></li><li><span onclick='toggleList(this)' class='marker'></span>
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:39 in main<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><span onclick='toggleList(this)' class='marker'></span><a href='#[1/0]' class='status-ok'>[1/0]</a> 
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:10 in f2<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+</ul></li><li><span onclick='toggleList(this)' class='marker'></span>
+/home/shreyansh/.local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:574 in _fn<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><span onclick='toggleList(this)' class='marker'></span><a href='#[2/0]' class='status-empty'>[2/0]</a> 
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:13 in torch_dynamo_resume_in_f2_at_13<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+</ul></li><li><span onclick='toggleList(this)' class='marker'></span>
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:10 in f2<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><a href='#[3/0]' class='status-ok'>[3/0]</a> /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:17 in torch_dynamo_resume_in_f2_at_17<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></li></ul></li></ul></li><li><span onclick='toggleList(this)' class='marker'></span>
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:45 in main<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><a href='#[4/0]' class='status-ok'>[4/0]</a> <a href='#[4/1]' class='status-ok'>[4/1]</a> <a href='#[4/2]' class='status-ok'>[4/2]</a> /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:20 in f3<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></li><li><span onclick='toggleList(this)' class='marker'></span>
+/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:50 in main<br>&nbsp;&nbsp;&nbsp;&nbsp;<ul>
+<li><a href='#[4/3]' class='status-ok'>[4/3]</a> <a href='#[4/4]' class='status-ok'>[4/4]</a> /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:20 in f3<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></li></ul></div></details>
+</div>
+<div>
+
+<h2> Failures and Restarts </h2>
+<p>
+Various issues may cause Dynamo to restart its analysis or give up on compilation entirely, causing graph breaks and fallbacks to eager mode.
+This run had <strong><a href="failures_and_restarts.html">1 restart(s) and/or compilation failure(s)</a></strong>.
+</p>
+
+<h2>IR dumps</h2>
+<p>
+The <strong>IR dumps</strong> collected dumped intermediate products from various points of the PT2
+compilation process.  The products are organized by compile id, and then sorted in chronological
+order.
+</p>
+<p>
+A <strong>compile id</strong> uniquely identifies are particular compilation inside a PT2
+program.  It is traditionally written as <code>[x/y]</code>, where the <strong>frame id</strong> x
+identifies the particular Python frame which we are compiling, and <strong>frame compile
+id</strong> y identifies how many times we've recompiled this same frame.  For example,
+<code>[0/0]</code> refers to the very first frame compiled by PT2; <code>[0/1]</code> refers to the
+first recompilation of this frame, while <code>[1/0]</code> refers to a different frame, within
+distinct code cache, which we are compiling next (perhaps because of a graph break).  Although
+Dynamo treats distinct frames as completely unrelated, a frame compilation could overlap with another
+frame; for example, if you graph break in an inlined function, Dynamo will typically try to compile
+the nested frame again on an inner frame.  You can identify the hierarchical relationship between
+frames by looking at the stack trie above.
+</p>
+<p>
+In some situations, the compile id will have an extra signifier <code>[x/y_z]</code>, where z is the
+<strong>attempt</strong> for this particular (re)compilation.  Certain conditions will cause Dynamo to
+restart analysis, when Dynamo discovers that it needs to undo a decision it previously made.  The most
+common cause of recompilation is a graph break in an inlined function call, which forces to restart
+and avoid inlining the function in the first place.
+</p>
+<p>
+When compiled autograd is enabled, the compile id will include a prefix signifier <code>[!a/x/y]</code>,
+where a is the <strong>compiled autograd id</strong>. For instance, <code>[!0/-/-]</code> refers 
+to the first graph captured by compiled autograd. It is then traced by torch.compile as <code>[!0/x/y_z]</code>.
+</p>
+<p>
+Here is a high level description of PT2's compilation phases, and the intermediate products each
+phase generates:
+</p>
+<ol>
+<li><em>Optional:</em> If compiled autograd is enabled, and we are processing a backward call, compiled autograd will trace the autograd graph from the autograd engine, and produce an FX graph <code>compiled_autograd_graph</code> that will be Dynamo traced.  Otherwise, Dynamo will directly trace user's bytecode.</li>
+<li>Dynamo symbolically evaluates the Python bytecode of a program, producing <code>dynamo_output_graph</code></li>
+<li><em>Optional:</em> If <code>optimize_ddp</code> is enabled, the DDPOptimizer will split the Dynamo output graph to improve pipelining communications.  Each split subgraph is <code>optimize_ddp_split_child_submod</code>, and the high level graph that plumbs the graphs together is <code>optimize_ddp_split_graph</code>.  If there are multiple splits, each subsequent build product will be produced multiple times, one for each split.</li>
+<li>AOTAutograd traces the (possibly split) Dynamo output graph, producing a <code>aot_joint_graph</code> if backwards is enabled.  It then partitions the graph into <code>aot_forward_graph</code> and <code>aot_backward_graph</code>.  If training is not needed, there may only be an <code>aot_inference_graph</code>.</li>
+<li>Inductor will apply some post grad FX passes, producing <code>inductor_post_grad_graph</code></li>
+<li>Inductor will perform code generation, producing the final <code>inductor_output_code</code> which will be executed at runtime.  This output is a valid Python program and can be directly run.</li>
+</ol>
+
+
+<h2> Chromium Events </h2>
+PT2 generates <a href='chromium_events.json'>Chromium Trace Events</a> in JSON on specific events during compilation.
+You can download and view them in a tool like <a href='https://ui.perfetto.dev/'>Perfetto</a>.
+
+<p>
+Build products below:
+</p>
+<ul>
+
+    <li><a id="[0/0]">[0/0]</a>
+    <ul>
+        
+            <li><a href="-_0_0_0/dynamo_output_graph_0.txt">-_0_0_0/dynamo_output_graph_0.txt</a>  (0)</li>
+        
+            <li><a href="-_0_0_0/aot_joint_graph_1.txt">-_0_0_0/aot_joint_graph_1.txt</a>  (1)</li>
+        
+            <li><a href="-_0_0_0/aot_forward_graph_fw_metadata_2.txt">-_0_0_0/aot_forward_graph_fw_metadata_2.txt</a>  (2)</li>
+        
+            <li><a href="-_0_0_0/aot_forward_graph_3.txt">-_0_0_0/aot_forward_graph_3.txt</a>  (3)</li>
+        
+            <li><a href="-_0_0_0/aot_backward_graph_4.txt">-_0_0_0/aot_backward_graph_4.txt</a>  (4)</li>
+        
+            <li><a href="-_0_0_0/fx_graph_runnable_5.txt">-_0_0_0/fx_graph_runnable_5.txt</a>  (5)</li>
+        
+            <li><a href="-_0_0_0/inductor_post_grad_graph_6.txt">-_0_0_0/inductor_post_grad_graph_6.txt</a>  (6)</li>
+        
+            <li><a href="-_0_0_0/inductor_output_code_chg4kveksptmqouwqh7loec3dkyyvfwfvf6ckph5ul6yi6ntcomq_7.html">-_0_0_0/inductor_output_code_chg4kveksptmqouwqh7loec3dkyyvfwfvf6ckph5ul6yi6ntcomq_7.html</a>  (7)</li>
+        
+            <li><a href="-_0_0_0/fx_graph_cache_miss_8.json">-_0_0_0/fx_graph_cache_miss_8.json</a> ❌ (8)</li>
+        
+            <li><a href="-_0_0_0/dynamo_cpp_guards_str_9.txt">-_0_0_0/dynamo_cpp_guards_str_9.txt</a>  (9)</li>
+        
+            <li><a href="-_0_0_0/compilation_metrics_10.html">-_0_0_0/compilation_metrics_10.html</a>  (10)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[-/-]">[-/-]</a>
+    <ul>
+        
+    </ul>
+    </li>
+
+    <li><a id="[1/0]">[1/0]</a>
+    <ul>
+        
+            <li><a href="-_1_0_0/dynamo_graph_break_reason_11.txt">-_1_0_0/dynamo_graph_break_reason_11.txt</a>  (11)</li>
+        
+            <li><a href="-_1_0_0/dynamo_output_graph_12.txt">-_1_0_0/dynamo_output_graph_12.txt</a>  (12)</li>
+        
+            <li><a href="-_1_0_0/aot_joint_graph_13.txt">-_1_0_0/aot_joint_graph_13.txt</a>  (13)</li>
+        
+            <li><a href="-_1_0_0/aot_forward_graph_fw_metadata_14.txt">-_1_0_0/aot_forward_graph_fw_metadata_14.txt</a>  (14)</li>
+        
+            <li><a href="-_1_0_0/aot_forward_graph_15.txt">-_1_0_0/aot_forward_graph_15.txt</a>  (15)</li>
+        
+            <li><a href="-_1_0_0/aot_backward_graph_16.txt">-_1_0_0/aot_backward_graph_16.txt</a>  (16)</li>
+        
+            <li><a href="-_1_0_0/inductor_output_code_cex46m6rz6nqmotnsumtv5xka5jygjefiij6c4jp3giw66h3plgf_17.html">-_1_0_0/inductor_output_code_cex46m6rz6nqmotnsumtv5xka5jygjefiij6c4jp3giw66h3plgf_17.html</a>  (17)</li>
+        
+            <li><a href="-_1_0_0/fx_graph_cache_hit_18.json">-_1_0_0/fx_graph_cache_hit_18.json</a> ✅ (18)</li>
+        
+            <li><a href="-_1_0_0/dynamo_cpp_guards_str_19.txt">-_1_0_0/dynamo_cpp_guards_str_19.txt</a>  (19)</li>
+        
+            <li><a href="-_1_0_0/compilation_metrics_20.html">-_1_0_0/compilation_metrics_20.html</a>  (20)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[2/0]">[2/0]</a>
+    <ul>
+        
+            <li><a href="-_2_0_0/dynamo_graph_break_reason_21.txt">-_2_0_0/dynamo_graph_break_reason_21.txt</a>  (21)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[2/0_1]">[2/0_1]</a>
+    <ul>
+        
+            <li><a href="-_2_0_1/dynamo_cpp_guards_str_22.txt">-_2_0_1/dynamo_cpp_guards_str_22.txt</a>  (22)</li>
+        
+            <li><a href="-_2_0_1/compilation_metrics_23.html">-_2_0_1/compilation_metrics_23.html</a>  (23)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[3/0]">[3/0]</a>
+    <ul>
+        
+            <li><a href="-_3_0_0/dynamo_output_graph_24.txt">-_3_0_0/dynamo_output_graph_24.txt</a>  (24)</li>
+        
+            <li><a href="-_3_0_0/aot_joint_graph_25.txt">-_3_0_0/aot_joint_graph_25.txt</a>  (25)</li>
+        
+            <li><a href="-_3_0_0/aot_forward_graph_fw_metadata_26.txt">-_3_0_0/aot_forward_graph_fw_metadata_26.txt</a>  (26)</li>
+        
+            <li><a href="-_3_0_0/aot_forward_graph_27.txt">-_3_0_0/aot_forward_graph_27.txt</a>  (27)</li>
+        
+            <li><a href="-_3_0_0/aot_backward_graph_28.txt">-_3_0_0/aot_backward_graph_28.txt</a>  (28)</li>
+        
+            <li><a href="-_3_0_0/fx_graph_runnable_29.txt">-_3_0_0/fx_graph_runnable_29.txt</a>  (29)</li>
+        
+            <li><a href="-_3_0_0/inductor_post_grad_graph_30.txt">-_3_0_0/inductor_post_grad_graph_30.txt</a>  (30)</li>
+        
+            <li><a href="-_3_0_0/inductor_output_code_cuewsz757js6psvxlvj6btorgoj2mlfirkuboikpoaawndgybjwq_31.html">-_3_0_0/inductor_output_code_cuewsz757js6psvxlvj6btorgoj2mlfirkuboikpoaawndgybjwq_31.html</a>  (31)</li>
+        
+            <li><a href="-_3_0_0/fx_graph_cache_miss_32.json">-_3_0_0/fx_graph_cache_miss_32.json</a> ❌ (32)</li>
+        
+            <li><a href="-_3_0_0/dynamo_cpp_guards_str_33.txt">-_3_0_0/dynamo_cpp_guards_str_33.txt</a>  (33)</li>
+        
+            <li><a href="-_3_0_0/compilation_metrics_34.html">-_3_0_0/compilation_metrics_34.html</a>  (34)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[4/0]">[4/0]</a>
+    <ul>
+        
+            <li><a href="-_4_0_0/dynamo_output_graph_35.txt">-_4_0_0/dynamo_output_graph_35.txt</a>  (35)</li>
+        
+            <li><a href="-_4_0_0/aot_joint_graph_36.txt">-_4_0_0/aot_joint_graph_36.txt</a>  (36)</li>
+        
+            <li><a href="-_4_0_0/aot_forward_graph_fw_metadata_37.txt">-_4_0_0/aot_forward_graph_fw_metadata_37.txt</a>  (37)</li>
+        
+            <li><a href="-_4_0_0/aot_forward_graph_38.txt">-_4_0_0/aot_forward_graph_38.txt</a>  (38)</li>
+        
+            <li><a href="-_4_0_0/aot_backward_graph_39.txt">-_4_0_0/aot_backward_graph_39.txt</a>  (39)</li>
+        
+            <li><a href="-_4_0_0/inductor_output_code_ckpg3njwbgea23lxq2pbkow3qvomdrwjn2hs4h45aijqj3cqfrdv_40.html">-_4_0_0/inductor_output_code_ckpg3njwbgea23lxq2pbkow3qvomdrwjn2hs4h45aijqj3cqfrdv_40.html</a>  (40)</li>
+        
+            <li><a href="-_4_0_0/fx_graph_cache_hit_41.json">-_4_0_0/fx_graph_cache_hit_41.json</a> ✅ (41)</li>
+        
+            <li><a href="-_4_0_0/dynamo_cpp_guards_str_42.txt">-_4_0_0/dynamo_cpp_guards_str_42.txt</a>  (42)</li>
+        
+            <li><a href="-_4_0_0/compilation_metrics_43.html">-_4_0_0/compilation_metrics_43.html</a>  (43)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[4/1]">[4/1]</a>
+    <ul>
+        
+            <li><a href="-_4_1_0/recompile_reasons_44.json">-_4_1_0/recompile_reasons_44.json</a>  (44)</li>
+        
+            <li><a href="-_4_1_0/dynamo_output_graph_45.txt">-_4_1_0/dynamo_output_graph_45.txt</a>  (45)</li>
+        
+            <li><a href="-_4_1_0/aot_joint_graph_46.txt">-_4_1_0/aot_joint_graph_46.txt</a>  (46)</li>
+        
+            <li><a href="-_4_1_0/aot_forward_graph_fw_metadata_47.txt">-_4_1_0/aot_forward_graph_fw_metadata_47.txt</a>  (47)</li>
+        
+            <li><a href="-_4_1_0/aot_forward_graph_48.txt">-_4_1_0/aot_forward_graph_48.txt</a>  (48)</li>
+        
+            <li><a href="-_4_1_0/aot_backward_graph_49.txt">-_4_1_0/aot_backward_graph_49.txt</a>  (49)</li>
+        
+            <li><a href="-_4_1_0/inductor_output_code_csrlefhkqppl22aq2af6ltcj2w2mzrafogw5va53cbkkhf53yqvs_50.html">-_4_1_0/inductor_output_code_csrlefhkqppl22aq2af6ltcj2w2mzrafogw5va53cbkkhf53yqvs_50.html</a>  (50)</li>
+        
+            <li><a href="-_4_1_0/fx_graph_cache_hit_51.json">-_4_1_0/fx_graph_cache_hit_51.json</a> ✅ (51)</li>
+        
+            <li><a href="-_4_1_0/inductor_output_code_cutxm7x4bnt5iicd4kjfvhpd5mdlvzkhcbzhv2cwvqoxedkayjf3_52.html">-_4_1_0/inductor_output_code_cutxm7x4bnt5iicd4kjfvhpd5mdlvzkhcbzhv2cwvqoxedkayjf3_52.html</a>  (52)</li>
+        
+            <li><a href="-_4_1_0/fx_graph_cache_hit_53.json">-_4_1_0/fx_graph_cache_hit_53.json</a> ✅ (53)</li>
+        
+            <li><a href="-_4_1_0/dynamo_cpp_guards_str_54.txt">-_4_1_0/dynamo_cpp_guards_str_54.txt</a>  (54)</li>
+        
+            <li><a href="-_4_1_0/compilation_metrics_55.html">-_4_1_0/compilation_metrics_55.html</a>  (55)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[4/2]">[4/2]</a>
+    <ul>
+        
+            <li><a href="-_4_2_0/recompile_reasons_56.json">-_4_2_0/recompile_reasons_56.json</a>  (56)</li>
+        
+            <li><a href="-_4_2_0/dynamo_output_graph_57.txt">-_4_2_0/dynamo_output_graph_57.txt</a>  (57)</li>
+        
+            <li><a href="-_4_2_0/aot_joint_graph_58.txt">-_4_2_0/aot_joint_graph_58.txt</a>  (58)</li>
+        
+            <li><a href="-_4_2_0/aot_forward_graph_fw_metadata_59.txt">-_4_2_0/aot_forward_graph_fw_metadata_59.txt</a>  (59)</li>
+        
+            <li><a href="-_4_2_0/aot_forward_graph_60.txt">-_4_2_0/aot_forward_graph_60.txt</a>  (60)</li>
+        
+            <li><a href="-_4_2_0/aot_backward_graph_61.txt">-_4_2_0/aot_backward_graph_61.txt</a>  (61)</li>
+        
+            <li><a href="-_4_2_0/inductor_output_code_cffxgqy6iirko65ay3pvn3am65vvg2n7i3wkqpcfbccuy3yso4aa_62.html">-_4_2_0/inductor_output_code_cffxgqy6iirko65ay3pvn3am65vvg2n7i3wkqpcfbccuy3yso4aa_62.html</a>  (62)</li>
+        
+            <li><a href="-_4_2_0/fx_graph_cache_hit_63.json">-_4_2_0/fx_graph_cache_hit_63.json</a> ✅ (63)</li>
+        
+            <li><a href="-_4_2_0/dynamo_cpp_guards_str_64.txt">-_4_2_0/dynamo_cpp_guards_str_64.txt</a>  (64)</li>
+        
+            <li><a href="-_4_2_0/compilation_metrics_65.html">-_4_2_0/compilation_metrics_65.html</a>  (65)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[4/3]">[4/3]</a>
+    <ul>
+        
+            <li><a href="-_4_3_0/recompile_reasons_66.json">-_4_3_0/recompile_reasons_66.json</a>  (66)</li>
+        
+            <li><a href="-_4_3_0/dynamo_output_graph_67.txt">-_4_3_0/dynamo_output_graph_67.txt</a>  (67)</li>
+        
+            <li><a href="-_4_3_0/aot_joint_graph_68.txt">-_4_3_0/aot_joint_graph_68.txt</a>  (68)</li>
+        
+            <li><a href="-_4_3_0/aot_forward_graph_fw_metadata_69.txt">-_4_3_0/aot_forward_graph_fw_metadata_69.txt</a>  (69)</li>
+        
+            <li><a href="-_4_3_0/aot_forward_graph_70.txt">-_4_3_0/aot_forward_graph_70.txt</a>  (70)</li>
+        
+            <li><a href="-_4_3_0/aot_backward_graph_71.txt">-_4_3_0/aot_backward_graph_71.txt</a>  (71)</li>
+        
+            <li><a href="-_4_3_0/inductor_output_code_cbzns7j7qzx6dm6l6lplkxr6g7heafack5sjfiqimtnxrxtkhta3_72.html">-_4_3_0/inductor_output_code_cbzns7j7qzx6dm6l6lplkxr6g7heafack5sjfiqimtnxrxtkhta3_72.html</a>  (72)</li>
+        
+            <li><a href="-_4_3_0/fx_graph_cache_hit_73.json">-_4_3_0/fx_graph_cache_hit_73.json</a> ✅ (73)</li>
+        
+            <li><a href="-_4_3_0/dynamo_cpp_guards_str_74.txt">-_4_3_0/dynamo_cpp_guards_str_74.txt</a>  (74)</li>
+        
+            <li><a href="-_4_3_0/compilation_metrics_75.html">-_4_3_0/compilation_metrics_75.html</a>  (75)</li>
+        
+    </ul>
+    </li>
+
+    <li><a id="[4/4]">[4/4]</a>
+    <ul>
+        
+            <li><a href="-_4_4_0/recompile_reasons_76.json">-_4_4_0/recompile_reasons_76.json</a>  (76)</li>
+        
+            <li><a href="-_4_4_0/dynamo_output_graph_77.txt">-_4_4_0/dynamo_output_graph_77.txt</a>  (77)</li>
+        
+            <li><a href="-_4_4_0/aot_joint_graph_78.txt">-_4_4_0/aot_joint_graph_78.txt</a>  (78)</li>
+        
+            <li><a href="-_4_4_0/aot_forward_graph_fw_metadata_79.txt">-_4_4_0/aot_forward_graph_fw_metadata_79.txt</a>  (79)</li>
+        
+            <li><a href="-_4_4_0/aot_forward_graph_80.txt">-_4_4_0/aot_forward_graph_80.txt</a>  (80)</li>
+        
+            <li><a href="-_4_4_0/aot_backward_graph_81.txt">-_4_4_0/aot_backward_graph_81.txt</a>  (81)</li>
+        
+            <li><a href="-_4_4_0/inductor_output_code_cjrguxvblkmankpvw6q3syotk2yaxpt5hgunpefkahmyglwwletq_82.html">-_4_4_0/inductor_output_code_cjrguxvblkmankpvw6q3syotk2yaxpt5hgunpefkahmyglwwletq_82.html</a>  (82)</li>
+        
+            <li><a href="-_4_4_0/fx_graph_cache_hit_83.json">-_4_4_0/fx_graph_cache_hit_83.json</a> ✅ (83)</li>
+        
+            <li><a href="-_4_4_0/inductor_output_code_cs6qdcevznibxh56ux2janr5elbrdqnzrm4dyz2hfjlhy5bbp26i_84.html">-_4_4_0/inductor_output_code_cs6qdcevznibxh56ux2janr5elbrdqnzrm4dyz2hfjlhy5bbp26i_84.html</a>  (84)</li>
+        
+            <li><a href="-_4_4_0/fx_graph_cache_hit_85.json">-_4_4_0/fx_graph_cache_hit_85.json</a> ✅ (85)</li>
+        
+            <li><a href="-_4_4_0/dynamo_cpp_guards_str_86.txt">-_4_4_0/dynamo_cpp_guards_str_86.txt</a>  (86)</li>
+        
+            <li><a href="-_4_4_0/compilation_metrics_87.html">-_4_4_0/compilation_metrics_87.html</a>  (87)</li>
+        
+    </ul>
+    </li>
+
+</ul>
+</div>
+
+
+
+
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+
+        // Append the current URL's query parameters to all relative links on the page
+        const queryParams = new URLSearchParams(window.location.search);
+        if (queryParams.size === 0) return url; // No query params, return original URL
+
+        function appendQueryParams(url) {
+            const newURL = new URL((new Request(url)).url);  // new URL(<relative URL>) but it actually works
+            const newSearchParams = new URLSearchParams(newURL.searchParams);
+            console.log(newURL.searchParams);
+            console.log(newSearchParams);
+
+            // Append query parameters
+            for (const [key, value] of queryParams) {
+                newSearchParams.set(key, value);
+            }
+
+            newURL.search = newSearchParams;
+            return newURL;
+        }
+
+        // Select all relative links on the page
+        const relativeLinks = document.querySelectorAll('a[href]:not([href^="http://"]):not([href^="https://"]):not([href^="\#"])');
+
+        // Append query parameters to each relative link
+        relativeLinks.forEach((link) => {
+            link.setAttribute("href", appendQueryParams(link.getAttribute("href")))
+        });
+    });
+    </script>
+
+</body>
+</html>

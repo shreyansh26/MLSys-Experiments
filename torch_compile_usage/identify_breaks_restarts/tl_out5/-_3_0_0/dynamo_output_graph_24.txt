@@ -1,0 +1,8 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, L_stack0_: "f32[3, 3][3, 1]cpu"):
+        l_stack0_ = L_stack0_
+        
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:17 in torch_dynamo_resume_in_f2_at_17, code: return x - s.item()
+        sub: "f32[3, 3][3, 1]cpu" = l_stack0_ - -3.2997748851776123;  l_stack0_ = None
+        return (sub,)
+        

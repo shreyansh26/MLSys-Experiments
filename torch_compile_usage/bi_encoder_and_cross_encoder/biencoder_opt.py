@@ -14,6 +14,8 @@ torch.set_float32_matmul_precision('high')
 torch._inductor.config.triton.cudagraph_trees = False
 # torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
+# ind_cfg.max_autotune_gemm_backends = "cutlass"
+
 ind_cfg.nan_asserts = False
 ind_cfg.dce = True
 ind_cfg.keep_output_stride = False
@@ -52,7 +54,7 @@ def load_models():
     biencoder.eval()
 
     print("Compiling models")
-    biencoder.forward = torch.compile(biencoder.forward, mode="max-autotune")
+    biencoder.forward = torch.compile(biencoder.forward, mode="max-autotune-no-cudagraphs")
 
     return biencoder, tokenizer
 

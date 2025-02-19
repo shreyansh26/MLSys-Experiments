@@ -1,0 +1,11 @@
+
+TREE_GUARD_MANAGER:
++- RootGuardManager
+| +- DEFAULT_DEVICE: utils_device.CURRENT_DEVICE == None                           # _dynamo/output_graph.py:493 in init_ambient_guards
+| +- GLOBAL_STATE: ___check_global_state()
+| +- TORCH_FUNCTION_MODE_STACK: ___check_torch_function_mode_stack()
+| +- GuardManager: source=L['k'], accessed_by=DictGetItemGuardAccessor('k')
+| | +- EQUALS_MATCH: L['k'] == 1                                                 
+| +- GuardManager: source=L['x'], accessed_by=DictGetItemGuardAccessor('x')
+| | +- TENSOR_MATCH: check_tensor(L['x'], Tensor, DispatchKeySet(CPU, BackendSelect, ADInplaceOrView, AutogradCPU), torch.float32, device=None, requires_grad=True, size=[3, 3], stride=[3, 1])
+| | +- NO_HASATTR: hasattr(L['x'], '_dynamo_dynamic_indices') == False         

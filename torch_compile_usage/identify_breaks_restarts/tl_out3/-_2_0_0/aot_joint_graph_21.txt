@@ -1,0 +1,15 @@
+class joint_helper(torch.nn.Module):
+    def forward(self, primals, tangents):
+        primals_1: "f32[3, 3][3, 1]cpu"; tangents_1: "f32[][]cpu"; 
+    
+        primals_1, tangents_1, = fx_pytree.tree_flatten_spec([primals, tangents], self._in_spec)
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:11 in f2, code: s = x.sum()
+        sum_1: "f32[][]cpu" = torch.ops.aten.sum.default(primals_1);  primals_1 = None
+        
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:13 in f2, code: if s > 0:
+        gt: "b8[][]cpu" = torch.ops.aten.gt.Scalar(sum_1, 0)
+        
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:11 in f2, code: s = x.sum()
+        expand: "f32[3, 3][0, 0]cpu" = torch.ops.aten.expand.default(tangents_1, [3, 3]);  tangents_1 = None
+        return pytree.tree_unflatten([sum_1, gt, expand], self._out_spec)
+        

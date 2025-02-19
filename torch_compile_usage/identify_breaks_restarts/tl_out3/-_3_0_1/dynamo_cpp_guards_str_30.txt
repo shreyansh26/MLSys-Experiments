@@ -1,0 +1,15 @@
+
+TREE_GUARD_MANAGER:
++- RootGuardManager
+| +- DEFAULT_DEVICE: utils_device.CURRENT_DEVICE == None                           # _dynamo/output_graph.py:493 in init_ambient_guards
+| +- GLOBAL_STATE: ___check_global_state()
+| +- TORCH_FUNCTION_MODE_STACK: ___check_torch_function_mode_stack()
+| +- GuardManager: source=L['s'], accessed_by=DictGetItemGuardAccessor('s')
+| | +- TENSOR_MATCH: check_tensor(L['s'], Tensor, DispatchKeySet(CPU, BackendSelect, ADInplaceOrView, AutogradCPU), torch.float32, device=None, requires_grad=True, size=[], stride=[])
+| | +- NO_HASATTR: hasattr(L['s'], '_dynamo_dynamic_indices') == False         
+| | +- NO_TENSOR_ALIASING: check_no_aliasing(L['s'], L['x'])
+| | +- GuardManager: source=L['s'].item, accessed_by=GetAttrGuardAccessor(item)
+| +- GuardManager: source=L['x'], accessed_by=DictGetItemGuardAccessor('x')
+| | +- TENSOR_MATCH: check_tensor(L['x'], Tensor, DispatchKeySet(CPU, BackendSelect, ADInplaceOrView, AutogradCPU), torch.float32, device=None, requires_grad=True, size=[3, 3], stride=[3, 1])
+| | +- NO_HASATTR: hasattr(L['x'], '_dynamo_dynamic_indices') == False         
+| | +- NO_TENSOR_ALIASING

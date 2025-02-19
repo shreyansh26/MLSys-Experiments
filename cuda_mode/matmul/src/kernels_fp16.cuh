@@ -6,3 +6,4 @@
 #include "kernels_fp16/04_shared_memory_swizzling.cuh"
 #include "kernels_fp16/05_async_copy.cuh"
 #include "kernels_fp16/06_tuning_tile_dimensions.cuh"
+#include "kernels_fp16/07_optimizing_index_calculation.cuh"

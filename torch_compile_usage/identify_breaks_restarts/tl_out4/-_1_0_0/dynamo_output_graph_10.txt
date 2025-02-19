@@ -1,0 +1,8 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, L_y_: "f32[3, 3][3, 1]cpu"):
+        l_y_ = L_y_
+        
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:7 in torch_dynamo_resume_in_f1_at_6, code: return torch.sin(y)
+        sin: "f32[3, 3][3, 1]cpu" = torch.sin(l_y_);  l_y_ = None
+        return (sin,)
+        

@@ -1,0 +1,141 @@
+
+<html>
+<head>
+    <style>
+    
+table td { vertical-align: top; }
+
+.stack-trie { white-space: nowrap; font-family: monospace; }
+.stack-trie ul { padding-left: 1ch;  }
+.stack-trie li { margin-left: 1ch; list-style-type: none;  }
+.stack-trie .marker {
+  cursor: pointer;
+}
+.stack-trie .marker.collapsed::before {
+  content: &quot;+ &quot;;
+}
+.stack-trie .marker:not(.collapsed)::before {
+  content: &quot;- &quot;;
+}
+.stack-trie a { text-decoration: none; }
+.stack-trie a:hover { text-decoration: underline; }
+.status-missing { background-color: purple; color: white; }
+.status-error { background-color: red; color: white; }
+.status-empty { background-color: white; color: black; }
+.status-ok { background-color: green; color: white; }
+.status-break { background-color: lime; color: black; }
+summary::-webkit-details-marker { color: #00ACF3; font-size: 125%; margin-right: 2px; }
+summary:focus { outline-style: none; }
+article &gt; details &gt; summary { font-size: 28px; margin-top: 16px; }
+details &gt; p { margin-left: 24px; }
+details details summary { font-size: 16px; }
+
+    </style>
+    <title>Compilation Metrics</title>
+    <base href="..">
+</head>
+<body>
+    <h1>Compilation Info for [5/0] </h1>
+    <p><details><summary>Stack</summary><div class='stack-trie'><ul><li>/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:20 in f3<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></div></details></p>
+    <h2>Output files:</h2>
+    <ul>
+        
+            <li><a href="-_5_0_0/dynamo_output_graph_43.txt">dynamo_output_graph_43.txt</a> (43)</li>
+        
+            <li><a href="-_5_0_0/aot_joint_graph_44.txt">aot_joint_graph_44.txt</a> (44)</li>
+        
+            <li><a href="-_5_0_0/aot_forward_graph_fw_metadata_45.txt">aot_forward_graph_fw_metadata_45.txt</a> (45)</li>
+        
+            <li><a href="-_5_0_0/aot_forward_graph_46.txt">aot_forward_graph_46.txt</a> (46)</li>
+        
+            <li><a href="-_5_0_0/aot_backward_graph_47.txt">aot_backward_graph_47.txt</a> (47)</li>
+        
+            <li><a href="-_5_0_0/inductor_output_code_ckpg3njwbgea23lxq2pbkow3qvomdrwjn2hs4h45aijqj3cqfrdv_48.html">inductor_output_code_ckpg3njwbgea23lxq2pbkow3qvomdrwjn2hs4h45aijqj3cqfrdv_48.html</a> (48)</li>
+        
+            <li><a href="-_5_0_0/fx_graph_cache_hit_49.json">fx_graph_cache_hit_49.json</a> (49)</li>
+        
+            <li><a href="-_5_0_0/dynamo_cpp_guards_str_50.txt">dynamo_cpp_guards_str_50.txt</a> (50)</li>
+        
+    </ul>
+    <h2>Stack</h2>
+    <details><summary>Stack</summary><div class='stack-trie'><ul><li>/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:54 in &lt;module&gt;<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+<li>/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:45 in main<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+<li>/mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:20 in f3<br>&nbsp;&nbsp;&nbsp;&nbsp;</li>
+</ul></div></details>
+    <h2>Compile Time(seconds)</h2>
+    <p>Entire Frame <abbr title="Total time spent in convert_frame function">[?]</abbr>: 0.029938</div>
+    <p>Backend <abbr title="Time spent running the backend compiler">[?]</abbr>: 0.024173</div>
+    
+    <p>Inductor <abbr title="Total time spent running inductor">[?]</abbr>: 0.006428</div>
+    
+    
+    <div>Dynamo Time Before Restart <abbr title="Total time spent restarting dynamo analysis">[?]</abbr>: 0.0</div>
+    <h2>Restarts and Failures</h2>
+    
+    <p> No failures! </p>
+    
+    
+    <p> No restarts! </p>
+    
+    <h2>Cache Metrics</h2>
+    <p>Cache Size: 0</p>
+    <p>Accumulated Cache Size: 0</p>
+    <h2>Graph Metrics</h2>
+    <p>Guard Count: 7</p>
+    <p>Shape Env Guards: 0</p>
+    <p>Graph Ops: 1</p>
+    <p>Graph Nodes: 3</p>
+    <p>Graph Inputs: 1</p>
+    <h2> Custom Ops </h2>
+    
+    
+    <h2>Symbolic shape specializations</h2>
+    <table>
+    <tr>
+        <th>Sym</th> <th>Source(s)</th> <th>Value</th> <th>User stack</th> <th>Framework stack</th>
+    </tr>
+    
+    </table>
+    <h2>Guards added fast</h2>
+    <table>
+    <tr>
+        <th>Expr</th> <th>User stack</th> <th>Framework stack</th>
+    </tr>
+    
+    </table>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+
+        // Append the current URL's query parameters to all relative links on the page
+        const queryParams = new URLSearchParams(window.location.search);
+        if (queryParams.size === 0) return url; // No query params, return original URL
+
+        function appendQueryParams(url) {
+            const newURL = new URL((new Request(url)).url);  // new URL(<relative URL>) but it actually works
+            const newSearchParams = new URLSearchParams(newURL.searchParams);
+            console.log(newURL.searchParams);
+            console.log(newSearchParams);
+
+            // Append query parameters
+            for (const [key, value] of queryParams) {
+                newSearchParams.set(key, value);
+            }
+
+            newURL.search = newSearchParams;
+            return newURL;
+        }
+
+        // Select all relative links on the page
+        const relativeLinks = document.querySelectorAll('a[href]:not([href^="http://"]):not([href^="https://"]):not([href^="\#"])');
+
+        // Append query parameters to each relative link
+        relativeLinks.forEach((link) => {
+            link.setAttribute("href", appendQueryParams(link.getAttribute("href")))
+        });
+    });
+    </script>
+
+</body>
+</html>

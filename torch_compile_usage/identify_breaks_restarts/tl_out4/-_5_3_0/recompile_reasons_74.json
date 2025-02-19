@@ -1,0 +1,5 @@
+[
+  "5/2: ",
+  "5/1: (L['k'] % 2) == 0  # if k % 2 == 0:  # nt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:23 in f3 (_dynamo/variables/tensor.py:1201 in evaluate_expr)",
+  "5/0: "
+]

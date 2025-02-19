@@ -1,0 +1,4 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, tangents_1: "f32[3, 3][3, 1]cpu"):
+        return (None, tangents_1)
+        

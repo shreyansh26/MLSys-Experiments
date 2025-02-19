@@ -1,0 +1,6 @@
+class GraphModule(torch.nn.Module):
+    def forward(self, primals_1: "f32[3, 3][3, 1]cpu"):
+         # File: /mnt/ssd1/shreyansh/home_dir/misc_experiments/torch_compile_usage/identify_breaks_restarts/buggy.py:15 in torch_dynamo_resume_in_f2_at_15, code: return x * s.item()
+        mul: "f32[3, 3][3, 1]cpu" = torch.ops.aten.mul.Tensor(primals_1, 0.2561222314834595);  primals_1 = None
+        return (mul,)
+        
