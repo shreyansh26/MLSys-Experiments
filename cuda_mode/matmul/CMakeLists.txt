@@ -29,6 +29,8 @@ set(CUDA_COMPUTE_CAPABILITY 75) # Define the CUDA compute capability version (e.
 add_compile_options("$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CUDA>>:-G;-src-in-ptx>")
 # add_compile_options("--ptxas-options=-v") # Optionally add PTXAS verbosity options
 
+add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>")
+
 # Configure header file search paths
 include_directories(${CUDA_INCLUDE_DIRS}) # Include CUDA's include directories
 include_directories(${PROJECT_SOURCE_DIR}/src) # Include the project's source directory
