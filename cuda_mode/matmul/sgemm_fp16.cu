@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
         // kernel function timing to avoid cold start errors
 
         // For kernel 0 i.e. cuBLAS, we only check correctness for small matrices as CPU does not support fp16
-        if(kernel_num == 0 and m <= 128) {
+        if(kernel_num == 0 and m <= 256) {
             run_kernel_fp16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, D_d, handle); // cuBLAS
             cudaCheck(cudaDeviceSynchronize());
             cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
