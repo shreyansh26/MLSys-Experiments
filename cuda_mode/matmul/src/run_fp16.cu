@@ -259,9 +259,9 @@ void tuning_tile_dimensions_launch(cublasHandle_t handle, int M, int N, int K, f
     constexpr unsigned int WARPS_PER_BLOCK_N = 4; // 64
     constexpr unsigned int WARPS_PER_BLOCK_K = 4; // 8
 
-    constexpr unsigned int WM_dim = BM_dim / WARPS_PER_BLOCK_M;
-    constexpr unsigned int WN_dim = BN_dim / WARPS_PER_BLOCK_N;
-    constexpr unsigned int WK_dim = BK_dim / WARPS_PER_BLOCK_K;
+    constexpr unsigned int WM_dim = BM_dim / WARPS_PER_BLOCK_M; // 128
+    constexpr unsigned int WN_dim = BN_dim / WARPS_PER_BLOCK_N; // 64
+    constexpr unsigned int WK_dim = BK_dim / WARPS_PER_BLOCK_K; // 8
 
     assert(M % BM_dim == 0);
     assert(N % BN_dim == 0);
