@@ -293,6 +293,49 @@ void tuning_tile_dimensions_launch(cublasHandle_t handle, int M, int N, int K, f
         );
 }
 
+void optimizing_index_calculation_launch(cublasHandle_t handle, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D) {
+    constexpr unsigned int BM_dim = 256;
+    constexpr unsigned int BN_dim = 256;
+    constexpr unsigned int BK_dim = 32;
+    
+    constexpr unsigned int WARPS_PER_BLOCK_M = 2; // 128
+    constexpr unsigned int WARPS_PER_BLOCK_N = 4; // 64
+    constexpr unsigned int WARPS_PER_BLOCK_K = 4; // 8
+
+    constexpr unsigned int WM_dim = BM_dim / WARPS_PER_BLOCK_M; // 128
+    constexpr unsigned int WN_dim = BN_dim / WARPS_PER_BLOCK_N; // 64
+    constexpr unsigned int WK_dim = BK_dim / WARPS_PER_BLOCK_K; // 8
+
+    assert(M % BM_dim == 0);
+    assert(N % BN_dim == 0);
+    assert(K % BK_dim == 0);
+    
+    constexpr unsigned int WARP_SIZE = 32;
+    const unsigned int BlocksM = M / BM_dim;
+    const unsigned int BlocksN = N / BN_dim;
+    constexpr unsigned int ThreadsM = WARPS_PER_BLOCK_M;
+    constexpr unsigned int ThreadsN = WARP_SIZE * WARPS_PER_BLOCK_N;
+    constexpr unsigned int NumThreads = ThreadsM * ThreadsN;
+    const unsigned int shmem_bytes = (BM_dim * BK_dim + BK_dim * BN_dim) * sizeof(half);
+
+    dim3 gridDim(BlocksN, BlocksM);
+    dim3 blockDim(ThreadsN, ThreadsM);
+    
+    cudaCheck(cudaFuncSetAttribute(optimizing_index_calculation<BM_dim, BN_dim, BK_dim, WM_dim, WN_dim, WK_dim, NumThreads>, cudaFuncAttributeMaxDynamicSharedMemorySize, 65536)); // set shared memory limit to 64KB which is maximum for sm_75
+
+    optimizing_index_calculation<BM_dim, BN_dim, BK_dim, WM_dim, WN_dim, WK_dim, NumThreads><<<gridDim, blockDim, shmem_bytes>>>(
+            A,
+            B,
+            C,
+            D,
+            alpha,
+            beta,
+            M,
+            N,
+            K
+        );
+}
+
 void run_kernel_fp16(int kernel_num, int M, int N, int K, float alpha, half *A, half *B, float beta, half *C, half *D, cublasHandle_t handle) {
     switch (kernel_num) {
         case 0:
@@ -322,6 +365,10 @@ void run_kernel_fp16(int kernel_num, int M, int N, int K, float alpha, half *A, 
         case 6:
             // std::cout << "Tuning Tile Dimensions" << std::endl;
             tuning_tile_dimensions_launch(handle, M, N, K, alpha, A, B, beta, C, D);
+            break;
+        case 7:
+            // std::cout << "Optimizing Index Calculation" << std::endl;
+            optimizing_index_calculation_launch(handle, M, N, K, alpha, A, B, beta, C, D);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
