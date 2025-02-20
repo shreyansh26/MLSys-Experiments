@@ -7,7 +7,7 @@
 #include "load_store_utils.cuh"
 
 template <unsigned int BM_dim, unsigned int BN_dim, unsigned int BK_dim, unsigned int WM_dim, unsigned int WN_dim, unsigned int WK_dim, unsigned int NUM_THREADS>
-__global__ void optimizing_index_calculation(half* A, half* B, half* C, half* D, const float alpha, const float beta, const unsigned int M, const unsigned int N, unsigned int K) {
+__global__ void double_buffering(half* A, half* B, half* C, half* D, const float alpha, const float beta, const unsigned int M, const unsigned int N, unsigned int K) {
     constexpr unsigned int MMA_M_dim = 16;
     constexpr unsigned int MMA_N_dim = 8;
 
@@ -36,6 +36,7 @@ __global__ void optimizing_index_calculation(half* A, half* B, half* C, half* D,
     // total size of shared memory is (BM_dim * BK_dim + BK_dim * BN_dim) * sizeof(half)
     // so B_block_smem is of shape [BK_dim, BN_dim]
     half* B_block_smem = &shmem[BM_dim * BK_dim];
+    constexpr int per_block_shared_mem = (BM_dim * BK_dim + BK_dim * BN_dim);
 
     // declare register storage
     // ptx instructions expect uint32_t registers, where each uint32_t is 2 halfs packed together  
@@ -77,11 +78,8 @@ __global__ void optimizing_index_calculation(half* A, half* B, half* C, half* D,
     half* B_block_gmem = B + (block_n * BN_dim);
     tileMemcpySwizzledA<BM_dim, NUM_THREADS>(A_block_gmem, A_block_smem, K);
     tileMemcpySwizzled<BK_dim, BN_dim, NUM_THREADS, SWIZZLE_BITS_B>(B_block_gmem, B_block_smem, N);
-    // __syncthreads();
 
-    // preload tiles of a into registers
-    half* A_warp_tile = A_block_smem + (warp_m * WM_dim * BK_dim);
-    half* B_warp_tile = B_block_smem + (warp_n * WN_dim);
+    int offset_dir = 1;
 
     for(unsigned int block_k = 1; block_k <= num_block_tiles_k; block_k++) {
         __syncthreads();
@@ -92,6 +90,9 @@ __global__ void optimizing_index_calculation(half* A, half* B, half* C, half* D,
             tileMemcpyLoad<BM_dim, BK_dim, NUM_THREADS, 4>(A_block_gmem, A_gmem_temp_reg, K);
             tileMemcpyLoad<BK_dim, BN_dim, NUM_THREADS, 4>(B_block_gmem, B_gmem_temp_reg, N);
         }
+
+        half* A_warp_tile = A_block_smem + (warp_m * WM_dim * BK_dim);
+        half* B_warp_tile = B_block_smem + (warp_n * WN_dim);
 
         ldmatrix_a<mma_tiles_per_warp_m, mma_tiles_per_warp_k, BK_dim>(A_warp_tile, A_register_);
         ldmatrix_b<mma_tiles_per_warp_k, mma_tiles_per_warp_n, BN_dim>(B_warp_tile, B_register_);
@@ -117,9 +118,13 @@ __global__ void optimizing_index_calculation(half* A, half* B, half* C, half* D,
                 }
             }
         }
-        __syncthreads();
+        // __syncthreads(); // Can be skipped as we will write to secondary buffer
 
         if(block_k != num_block_tiles_k) {
+            A_block_smem = A_block_smem + offset_dir * per_block_shared_mem;
+            B_block_smem = B_block_smem + offset_dir * per_block_shared_mem;
+            offset_dir = -1 * offset_dir;
+
             tileMemcpySwizzledStoreA<BM_dim, NUM_THREADS, 4>(A_gmem_temp_reg, A_block_smem);
             tileMemcpySwizzledStore<BK_dim, BN_dim, NUM_THREADS, SWIZZLE_BITS_B, 4>(B_gmem_temp_reg, B_block_smem);
         }
