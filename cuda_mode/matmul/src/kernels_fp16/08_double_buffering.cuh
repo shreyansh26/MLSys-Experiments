@@ -118,7 +118,7 @@ __global__ void double_buffering(half* A, half* B, half* C, half* D, const float
                 }
             }
         }
-        // __syncthreads();
+        // __syncthreads(); // Can be skipped as we will write to secondary buffer
 
         if(block_k != num_block_tiles_k) {
             A_block_smem = A_block_smem + offset_dir * per_block_shared_mem;
