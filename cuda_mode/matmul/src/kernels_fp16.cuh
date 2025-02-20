@@ -7,3 +7,4 @@
 #include "kernels_fp16/05_async_copy.cuh"
 #include "kernels_fp16/06_tuning_tile_dimensions.cuh"
 #include "kernels_fp16/07_optimizing_index_calculation.cuh"
+#include "kernels_fp16/08_double_buffering.cuh"
