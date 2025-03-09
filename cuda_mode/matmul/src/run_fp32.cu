@@ -99,8 +99,7 @@ void run_sgemm_cuda_warptiling(int M, int N, int K, float alpha, float *A, float
     static_assert((K10_BN / K10_WN) * (K10_BM / K10_WM) == NUM_WARPS);
 
     // threads in warpsubtile
-    static_assert((K10_WM * K10_WN) % (WARPSIZE * K10_TM * K10_TN * K10_WNITER) ==
-                    0);
+    static_assert((K10_WM * K10_WN) % (WARPSIZE * K10_TM * K10_TN * K10_WNITER) == 0);
     constexpr uint K10_WMITER =
         (K10_WM * K10_WN) / (32 * K10_TM * K10_TN * K10_WNITER);
     // warpsubtile in warptile

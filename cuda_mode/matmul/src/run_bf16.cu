@@ -71,8 +71,7 @@ void run_sgemm_cuda_warptiling(int M, int N, int K, float alpha, bf16 *A, bf16 *
     static_assert((K10_BN / K10_WN) * (K10_BM / K10_WM) == NUM_WARPS);
 
     // threads in warpsubtile
-    static_assert((K10_WM * K10_WN) % (WARPSIZE * K10_TM * K10_TN * K10_WNITER) ==
-                    0);
+    static_assert((K10_WM * K10_WN) % (WARPSIZE * K10_TM * K10_TN * K10_WNITER) == 0);
     constexpr uint K10_WMITER =
         (K10_WM * K10_WN) / (32 * K10_TM * K10_TN * K10_WNITER);
     // warpsubtile in warptile
@@ -104,6 +103,11 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 0:
             // std::cout << "cuBLAS BF16" << std::endl;
             run_cublas(handle, M, N, K, alpha, A, B, beta, C, trans_b);
+            break;
+        case 1:
+            // std::cout << "CUDA Warptiling BF16" << std::endl; // From Simon's blog
+            // C = alpha * A @ B + beta * C (A = MxK, B = KxN, C = MxN)
+            run_sgemm_cuda_warptiling(M, N, K, alpha, A, B, beta, C);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
