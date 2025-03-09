@@ -14,41 +14,47 @@ typedef __nv_bfloat16 bf16;
 
 const std::string errLogFile = "matrixValidationFailure.txt";
 
-void gemm_cpu_ref(int m, int n, int k, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
-    float alpha_f = __bfloat162float(alpha);
-    float beta_f = __bfloat162float(beta);
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            float c = beta_f * __bfloat162float(C[i * n + j]);
-            for(int l = 0; l < k; l++) {
-                c += alpha_f * __bfloat162float(A[i * k + l]) * __bfloat162float(B[l * n + j]);
+void gemm_cpu_ref(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, bool trans_b = false) {
+    if (!trans_b) {
+        // A is MxK, B is KxN, C is MxN
+        float alpha_f = __bfloat162float(alpha);
+        float beta_f = __bfloat162float(beta);
+        for (int i = 0; i < M; i++) {
+            for (int j = 0; j < N; j++) {
+                float c = beta_f * __bfloat162float(C[i * N + j]);
+                for(int k = 0; k < K; k++) {
+                    c += alpha_f * __bfloat162float(A[i * K + k]) * __bfloat162float(B[k * N + j]);
+                }
+                C[i * N + j] = __float2bfloat16(c);
             }
-            C[i * n + j] = __float2bfloat16(c);
+        }
+    }
+    else {
+        // A is MxK, B is NxK, C is MxN
+        for (int i = 0; i < M; ++i) {
+            for (int j = 0; j < N; ++j) {
+                float sum = 0.0f;
+                
+                // Dot product of A's row i and B's row j
+                for (int k = 0; k < K; ++k) {
+                    sum += __bfloat162float(A[i * K + k]) * __bfloat162float(B[j * K + k]);
+                }
+                
+                // Apply scaling factors
+                const float old_c = __bfloat162float(C[i * N + j]);
+                C[i * N + j] = __float2bfloat16(alpha * sum + beta * old_c);
+            }
         }
     }
 }
 
 // void gemm_cpu_ref(int M, int N, int K, float alpha, const bf16* A, const bf16* B, float beta, bf16* C) {
-//     // A is MxK, B is NxK, C is MxN
-//     for (int i = 0; i < M; ++i) {
-//         for (int j = 0; j < N; ++j) {
-//             float sum = 0.0f;
-            
-//             // Dot product of A's row i and B's row j
-//             for (int k = 0; k < K; ++k) {
-//                 sum += __bfloat162float(A[i * K + k]) * __bfloat162float(B[j * K + k]);
-//             }
-            
-//             // Apply scaling factors
-//             const float old_c = __bfloat162float(C[i * N + j]);
-//             C[i * N + j] = __float2bfloat16(alpha * sum + beta * old_c);
-//         }
-//     }
+    
 // }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        std::cerr << "Please select a kernel (range 0 - 12, 0 for NVIDIA cuBLAS)" << std::endl;
+    if (argc != 2 and argc != 3) {
+        std::cerr << "Please select a kernel (range 0 - 12, 0 for NVIDIA cuBLAS) and optionally a trans_b flag (0 or 1)" << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -57,6 +63,11 @@ int main(int argc, char **argv) {
     if (kernel_num < 0 || kernel_num > 12) {
         std::cerr << "Please enter a valid kernel number (0-12)" << std::endl;
         exit(EXIT_FAILURE);
+    }
+
+    bool trans_b = false;
+    if (argc == 3) {
+        trans_b = std::stoi(argv[2]) == 1;
     }
 
     // get environment variable for device
@@ -133,12 +144,12 @@ int main(int argc, char **argv) {
 
         // For kernel 0 i.e. cuBLAS, we only check correctness for small matrices as CPU does not support fp16
         if(kernel_num == 0 and m <= 512) {
-            run_kernel_bf16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, handle); // cuBLAS
+            run_kernel_bf16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, handle, trans_b); // cuBLAS
             cudaCheck(cudaDeviceSynchronize());
             cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
             cudaMemcpy(C_ref, C_ref_d, sizeof(bf16) * m * n, cudaMemcpyDeviceToHost);
                         
-            gemm_cpu_ref(m, n, k, alpha, A, B, beta, C_cpu_ref); // perform reference calculation on CPU
+            gemm_cpu_ref(m, n, k, alpha, A, B, beta, C_cpu_ref, trans_b); // perform reference calculation on CPU
 
             if(!verify_matrix<bf16>(C_ref, C_cpu_ref, m * n)) {
                 std::cout << "Failed to pass the correctness verification against CPU computation." << std::endl;
@@ -163,7 +174,7 @@ int main(int argc, char **argv) {
         
         // For other kernels, larger errors at certain indices start to show up at 1024
         if(kernel_num != 0 and m <= 512) {
-            run_kernel_bf16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, handle); // cuBLAS
+            run_kernel_bf16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, handle, trans_b); // cuBLAS
             run_kernel_bf16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, handle); // Executes the kernel, modifies the result matrix
             cudaCheck(cudaDeviceSynchronize());
             cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
@@ -194,7 +205,7 @@ int main(int argc, char **argv) {
         cudaEventRecord(beg);
         for (int j = 0; j < repeat_times; j++) {
             // We don't reset C_d between runs to save time and correctness check was done above
-            run_kernel_bf16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, handle);
+            run_kernel_bf16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, handle, trans_b);
         }
         cudaEventRecord(end);
         cudaEventSynchronize(beg);
