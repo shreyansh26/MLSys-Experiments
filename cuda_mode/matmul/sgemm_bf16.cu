@@ -14,23 +14,37 @@ typedef __nv_bfloat16 bf16;
 
 const std::string errLogFile = "matrixValidationFailure.txt";
 
-void gemm_cpu_ref(int M, int N, int K, float alpha, const bf16* A, const bf16* B, float beta, bf16* C) {
-    // A is MxK, B is NxK, C is MxN
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < N; ++j) {
-            float sum = 0.0f;
-            
-            // Dot product of A's row i and B's row j
-            for (int k = 0; k < K; ++k) {
-                sum += __bfloat162float(A[i * K + k]) * __bfloat162float(B[j * K + k]);
+void gemm_cpu_ref(int m, int n, int k, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
+    float alpha_f = __bfloat162float(alpha);
+    float beta_f = __bfloat162float(beta);
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            float c = beta_f * __bfloat162float(C[i * n + j]);
+            for(int l = 0; l < k; l++) {
+                c += alpha_f * __bfloat162float(A[i * k + l]) * __bfloat162float(B[l * n + j]);
             }
-            
-            // Apply scaling factors
-            const float old_c = __bfloat162float(C[i * N + j]);
-            C[i * N + j] = __float2bfloat16(alpha * sum + beta * old_c);
+            C[i * n + j] = __float2bfloat16(c);
         }
     }
 }
+
+// void gemm_cpu_ref(int M, int N, int K, float alpha, const bf16* A, const bf16* B, float beta, bf16* C) {
+//     // A is MxK, B is NxK, C is MxN
+//     for (int i = 0; i < M; ++i) {
+//         for (int j = 0; j < N; ++j) {
+//             float sum = 0.0f;
+            
+//             // Dot product of A's row i and B's row j
+//             for (int k = 0; k < K; ++k) {
+//                 sum += __bfloat162float(A[i * K + k]) * __bfloat162float(B[j * K + k]);
+//             }
+            
+//             // Apply scaling factors
+//             const float old_c = __bfloat162float(C[i * N + j]);
+//             C[i * N + j] = __float2bfloat16(alpha * sum + beta * old_c);
+//         }
+//     }
+// }
 
 int main(int argc, char **argv) {
     if (argc != 2) {
