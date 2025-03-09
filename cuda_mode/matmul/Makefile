@@ -1,4 +1,4 @@
-.PHONY: all build_fp32 build_fp16 debug clean profile bench cuobjdump
+.PHONY: all build_fp32 build_fp16 build_bf16 debug clean profile bench cuobjdump
 
 CMAKE := cmake
 
@@ -18,6 +18,11 @@ build_fp16:
 	@mkdir -p $(BUILD_DIR)/fp16
 	@cd $(BUILD_DIR)/fp16 && $(CMAKE) -DCMAKE_BUILD_TYPE=Release -DBUILD_PRECISION=FP16 ../../
 	@$(MAKE) -C $(BUILD_DIR)/fp16
+
+build_bf16:
+	@mkdir -p $(BUILD_DIR)/bf16
+	@cd $(BUILD_DIR)/bf16 && $(CMAKE) -DCMAKE_BUILD_TYPE=Release -DBUILD_PRECISION=BF16 ../../
+	@$(MAKE) -C $(BUILD_DIR)/bf16
 
 debug:
 	@mkdir -p $(BUILD_DIR)/$(PRECISION)/debug

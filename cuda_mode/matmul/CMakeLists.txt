@@ -41,8 +41,8 @@ aux_source_directory(${PROJECT_SOURCE_DIR}/src SRC) # Gather all source files fr
 message(STATUS "Source files found: ${SRC}")
 
 # Set Precision option
-set(BUILD_PRECISION "FP32" CACHE STRING "Precision to build (FP32 or FP16)")
-set_property(CACHE BUILD_PRECISION PROPERTY STRINGS FP32 FP16)
+set(BUILD_PRECISION "FP32" CACHE STRING "Precision to build (FP32 or FP16 or BF16)")
+set_property(CACHE BUILD_PRECISION PROPERTY STRINGS FP32 FP16 BF16)
 
 if(BUILD_PRECISION STREQUAL "FP32")
     add_executable(sgemm_fp32 sgemm_fp32.cu ${SRC})
@@ -52,6 +52,10 @@ elseif(BUILD_PRECISION STREQUAL "FP16")
     add_executable(sgemm_fp16 sgemm_fp16.cu ${SRC})
     set_target_properties(sgemm_fp16 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
     target_link_libraries(sgemm_fp16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+elseif(BUILD_PRECISION STREQUAL "BF16")
+    add_executable(sgemm_bf16 sgemm_bf16.cu ${SRC})
+    set_target_properties(sgemm_bf16 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
+    target_link_libraries(sgemm_bf16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
 else()
-    message(FATAL_ERROR "Unknown PRECISION: ${BUILD_PRECISION}. Use FP32 or FP16.")
+    message(FATAL_ERROR "Unknown PRECISION: ${BUILD_PRECISION}. Use FP32 or FP16 or BF16.")
 endif()
