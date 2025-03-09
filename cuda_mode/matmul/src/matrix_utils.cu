@@ -1,4 +1,7 @@
 #include "matrix_utils.cuh"
+#include <cuda_bf16.h>
+
+typedef __nv_bfloat16 bf16;
 
 template <typename T>
 void randomize_matrix(T *mat, int N) {
@@ -11,6 +14,9 @@ void randomize_matrix(T *mat, int N) {
         float tmp = (float)(rand() % 5) + 0.01 * (float)(rand() % 5);
         if(std::is_same<T, half>::value) {
             tmp = __float2half(tmp);
+        }
+        if(std::is_same<T, bf16>::value) {
+            tmp = __float2bfloat16(tmp);
         }
         tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
         mat[i] = tmp;
@@ -37,7 +43,7 @@ void print_matrix(const T *A, int M, int N, std::ofstream &fs) {
 
 template <typename T>
 bool verify_matrix(T *matRef, T *matOut, int N, double atol, double rtol) {
-    if(std::is_same<T, half>::value) {
+    if(std::is_same<T, half>::value || std::is_same<T, bf16>::value) {
         atol = 1;
         rtol = 5e-1;
     }
@@ -56,7 +62,10 @@ bool verify_matrix(T *matRef, T *matOut, int N, double atol, double rtol) {
 
 template void randomize_matrix<float>(float *mat, int N);
 template void randomize_matrix<half>(half *mat, int N);
+template void randomize_matrix<bf16>(bf16 *mat, int N);
 template void print_matrix<float>(const float *A, int M, int N, std::ofstream &fs);
 template void print_matrix<half>(const half *A, int M, int N, std::ofstream &fs);
+template void print_matrix<bf16>(const bf16 *A, int M, int N, std::ofstream &fs);
 template bool verify_matrix<float>(float *matRef, float *matOut, int N, double atol, double rtol);
 template bool verify_matrix<half>(half *matRef, half *matOut, int N, double atol, double rtol);
+template bool verify_matrix<bf16>(bf16 *matRef, bf16 *matOut, int N, double atol, double rtol);
