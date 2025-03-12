@@ -9,7 +9,7 @@ include(CheckLanguage) # Include the module to check for language support
 check_language(CUDA) # Verify that CUDA language support is available
 
 set(CMAKE_CXX_STANDARD 20) # Set the C++ standard to C++20
-set(CUDA_COMPUTE_CAPABILITY 90) # Define the CUDA compute capability version (e.g., 9.0)
+set(CUDA_COMPUTE_CAPABILITY 90a) # Define the CUDA compute capability version (e.g., 9.0)
 
 # In debug mode, add debug symbols to device code
 # IF (Configuration is Debug) AND (Language is CUDA)
@@ -34,6 +34,12 @@ add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>")
 # Configure header file search paths
 include_directories(${CUDA_INCLUDE_DIRS}) # Include CUDA's include directories
 include_directories(${PROJECT_SOURCE_DIR}/src) # Include the project's source directory
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cccl/thrust
+    ${CMAKE_CURRENT_SOURCE_DIR}/cccl/libcudacxx/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cccl/cub
+)
+find_library(CUDA_DRIVER_LIBRARY cuda)
 
 # Configure the source file path to be compiled
 aux_source_directory(${PROJECT_SOURCE_DIR}/src SRC) # Gather all source files from the src directory into the SRC variable
@@ -47,15 +53,15 @@ set_property(CACHE BUILD_PRECISION PROPERTY STRINGS FP32 FP16 BF16)
 if(BUILD_PRECISION STREQUAL "FP32")
     add_executable(sgemm_fp32 sgemm_fp32.cu ${SRC})
     set_target_properties(sgemm_fp32 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
-    target_link_libraries(sgemm_fp32 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+    target_link_libraries(sgemm_fp32 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_DRIVER_LIBRARY})
 elseif(BUILD_PRECISION STREQUAL "FP16")
     add_executable(sgemm_fp16 sgemm_fp16.cu ${SRC})
     set_target_properties(sgemm_fp16 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
-    target_link_libraries(sgemm_fp16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+    target_link_libraries(sgemm_fp16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_DRIVER_LIBRARY})
 elseif(BUILD_PRECISION STREQUAL "BF16")
     add_executable(sgemm_bf16 sgemm_bf16.cu ${SRC})
     set_target_properties(sgemm_bf16 PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
-    target_link_libraries(sgemm_bf16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+    target_link_libraries(sgemm_bf16 ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_DRIVER_LIBRARY})
 else()
     message(FATAL_ERROR "Unknown PRECISION: ${BUILD_PRECISION}. Use FP32 or FP16 or BF16.")
 endif()
