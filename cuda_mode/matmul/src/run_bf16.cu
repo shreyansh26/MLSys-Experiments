@@ -98,6 +98,36 @@ void run_sgemm_cuda_warptiling(int M, int N, int K, float alpha, bf16 *A, bf16 *
     sgemm_warptiling<K10_BM, K10_BN, K10_BK, K10_WM, K10_WN, K10_WNITER, K10_TM, K10_TN, K10_NUM_THREADS><<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
 }
 
+CUtensorMap *d_tma_map_A = 0;
+CUtensorMap *d_tma_map_B = 0;
+int _prev_m=0, _prev_n=0, _prev_k=0;
+
+void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
+    constexpr int BM = 64;
+    constexpr int BN = 64;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128;
+
+    if (!d_tma_map_A) {
+        d_tma_map_A = allocate_and_create_tensor_map<BK, BM>(A, K / BK, M / BM);
+        d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+        _prev_m = M;
+        _prev_n = N;
+        _prev_k = K;
+    }
+    // Assert cached values are of same size
+    assert (M == _prev_m && N == _prev_n && K == _prev_k);
+    tensor_core_matmul<
+    /*BM*/ BM,
+    /*BN*/ BN,
+    /*BK*/ BK,
+    /*WGMMA_M*/ 64,
+    /*WGMMA_N*/ 64,
+    /*WGMMA_K*/ 16,
+    /*NUM_THREADS*/ NUM_THREADS>
+    <<<(M/BM) * (N/BN), NUM_THREADS>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta);
+}
+
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, bool trans_b) {
     switch (kernel_num) {
         case 0:
@@ -108,6 +138,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
             // std::cout << "CUDA Warptiling BF16" << std::endl; // From Simon's blog
             // C = alpha * A @ B + beta * C (A = MxK, B = KxN, C = MxN)
             run_sgemm_cuda_warptiling(M, N, K, alpha, A, B, beta, C);
+            break;
+        case 2:
+            // std::cout << "Tensor Core BF16" << std::endl;
+            run_tensor_core(M, N, K, alpha, A, B, beta, C);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
