@@ -121,7 +121,7 @@ CUtensorMap *d_tma_map_A = 0;
 CUtensorMap *d_tma_map_B = 0;
 int _prev_m=0, _prev_n=0, _prev_k=0;
 
-void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
+void run_tensor_core_row_major(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
     constexpr int BM = 64;
     constexpr int BN = 64;
     constexpr int BK = 64;
@@ -161,6 +161,46 @@ void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float b
     <<<(M/BM) * (N/BN), NUM_THREADS>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta);
 }
 
+void run_tensor_core_col_major(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
+    constexpr int BM = 64;
+    constexpr int BN = 64;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128;
+
+    // if (!d_tma_map_A) {
+    //     d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+    //     d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+    //     _prev_m = M;
+    //     _prev_n = N;
+    //     _prev_k = K;
+    // }
+    // if (d_tma_map_A && (M != _prev_m || N != _prev_n || K != _prev_k)) {
+    //     cudaFree(d_tma_map_A);
+    //     cudaFree(d_tma_map_B);
+    //     d_tma_map_A = nullptr;
+    //     d_tma_map_B = nullptr;
+    // }
+
+    CUtensorMap *d_tma_map_A = 0;
+    CUtensorMap *d_tma_map_B = 0;
+
+    if (!d_tma_map_A) {
+        d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+        // d_tma_map_B = allocate_and_create_tensor_map<BK, BN>(B, K / BK, N / BN);
+        d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+    }
+
+    tensor_core_matmul_col_major<
+    /*BM*/ BM,
+    /*BN*/ BN,
+    /*BK*/ BK,
+    /*WGMMA_M*/ 64,
+    /*WGMMA_N*/ 64,
+    /*WGMMA_K*/ 16,
+    /*NUM_THREADS*/ NUM_THREADS>
+    <<<(M/BM) * (N/BN), NUM_THREADS>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta);
+}
+
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b) {
     switch (kernel_num) {
         case 0:
@@ -174,7 +214,11 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
             break;
         case 2:
             // std::cout << "Tensor Core BF16" << std::endl;
-            run_tensor_core(M, N, K, alpha, A, B, beta, C);
+            run_tensor_core_row_major(M, N, K, alpha, A, B, beta, C);
+            break;
+        case 3:
+            // std::cout << "Tensor Core BF16" << std::endl;
+            run_tensor_core_col_major(M, N, K, alpha, A, B, beta, C);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
