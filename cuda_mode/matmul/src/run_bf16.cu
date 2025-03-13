@@ -5,13 +5,13 @@
 typedef __nv_bfloat16 bf16;
 #define cudaCheck(val) check_cuda((val), #val, __FILE__, __LINE__)
 
-void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, bool trans_b = false) {
+void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int trans_b = 0) {
     cublasStatus_t status;
     // A is MxK, B is KxN, C is MxN (row major)
     // So if B (first argument) is column major - NxK
     // Similarly A is simply column major - KxM
     // So C is NxM (column major) -> MxN (row major)
-    if (!trans_b) {
+    if (trans_b == 0) {
         status = cublasGemmEx(handle,
             CUBLAS_OP_N,
             CUBLAS_OP_N,
@@ -29,7 +29,7 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, bf16 *A
     // So if B (first argument) is column major - KxN, transpose -> NxK
     // Similarly A is simply column major - KxM
     // So C is NxM (column major) -> MxN (row major)
-    else {
+    else if (trans_b == 1) {
         status = cublasGemmEx(handle,
             CUBLAS_OP_T,
             CUBLAS_OP_N,
@@ -42,6 +42,25 @@ void run_cublas(cublasHandle_t handle, int M, int N, int K, float alpha, bf16 *A
             CUBLAS_COMPUTE_32F,
             CUBLAS_GEMM_DEFAULT
         );
+    }
+    else if (trans_b == 2) {
+        status = cublasGemmEx(handle,
+            CUBLAS_OP_N,       // A is not transposed (column-major A is stored as A[i + k*M])
+            CUBLAS_OP_N,       // B remains as stored (but note that you want Bᵀ—so B should have been supplied transposed)
+            M,                 // number of rows of C
+            N,                 // number of columns of C
+            K,
+            &alpha,
+            A, CUDA_R_16BF, M,
+            B, CUDA_R_16BF, K,
+            &beta,
+            C, CUDA_R_16BF, M,
+            CUBLAS_COMPUTE_32F,
+            CUBLAS_GEMM_DEFAULT);
+    }
+    else {
+        std::cerr << "Invalid trans_b value: " << trans_b << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -131,7 +150,7 @@ void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float b
         d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
     }
 
-    tensor_core_matmul<
+    tensor_core_matmul_row_major<
     /*BM*/ BM,
     /*BN*/ BN,
     /*BK*/ BK,
@@ -142,7 +161,7 @@ void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float b
     <<<(M/BM) * (N/BN), NUM_THREADS>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta);
 }
 
-void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, bool trans_b) {
+void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b) {
     switch (kernel_num) {
         case 0:
             // std::cout << "cuBLAS BF16" << std::endl;
