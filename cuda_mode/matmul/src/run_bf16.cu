@@ -108,15 +108,28 @@ void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float b
     constexpr int BK = 64;
     constexpr int NUM_THREADS = 128;
 
+    // if (!d_tma_map_A) {
+    //     d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+    //     d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+    //     _prev_m = M;
+    //     _prev_n = N;
+    //     _prev_k = K;
+    // }
+    // if (d_tma_map_A && (M != _prev_m || N != _prev_n || K != _prev_k)) {
+    //     cudaFree(d_tma_map_A);
+    //     cudaFree(d_tma_map_B);
+    //     d_tma_map_A = nullptr;
+    //     d_tma_map_B = nullptr;
+    // }
+
+    CUtensorMap *d_tma_map_A = 0;
+    CUtensorMap *d_tma_map_B = 0;
+
     if (!d_tma_map_A) {
         d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
         d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
-        _prev_m = M;
-        _prev_n = N;
-        _prev_k = K;
     }
-    // Assert cached values are of same size
-    assert (M == _prev_m && N == _prev_n && K == _prev_k);
+
     tensor_core_matmul<
     /*BM*/ BM,
     /*BN*/ BN,
