@@ -182,15 +182,15 @@ int main(int argc, char **argv) {
             cudaMemcpy(C, C_d, sizeof(bf16) * m * n, cudaMemcpyDeviceToHost);
             
             // Transpose C for verification
-            bf16* C_transposed = (bf16*)malloc(sizeof(bf16) * m * n);
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) {
-                    C_transposed[j * m + i] = C[i * n + j];
-                }
-            }
+            // bf16* C_transposed = (bf16*)malloc(sizeof(bf16) * m * n);
+            // for (int i = 0; i < m; i++) {
+            //     for (int j = 0; j < n; j++) {
+            //         C_transposed[j * m + i] = C[i * n + j];
+            //     }
+            // }
             // Copy transposed result back to C
-            memcpy(C, C_transposed, sizeof(bf16) * m * n);
-            free(C_transposed);            
+            // memcpy(C, C_transposed, sizeof(bf16) * m * n);
+            // free(C_transposed);            
 
             if(!verify_matrix<bf16>(C_ref, C, m * n)) {
                 std::cout << "Failed to pass the correctness verification against NVIDIA cuBLAS." << std::endl;

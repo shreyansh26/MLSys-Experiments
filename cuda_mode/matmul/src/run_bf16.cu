@@ -127,6 +127,7 @@ void run_tensor_core(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float b
 
     if (!d_tma_map_A) {
         d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+        // d_tma_map_B = allocate_and_create_tensor_map<BK, BN>(B, K / BK, N / BN);
         d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
     }
 

@@ -141,13 +141,15 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul(int M, int N, 
         int lane = tid % 32;
         int warp = tid / 32;
         uint32_t row = warp*16 + lane / 4;
-        bf16 *block_C = C + num_block_n*BN*M + num_block_m*BM;
+        // bf16 *block_C = C + num_block_n*BN*M + num_block_m*BM;
+        bf16 *block_C = C + num_block_m*BM*N + num_block_n*BN;
 
         for (int m_it = 0; m_it < BM/WGMMA_M; ++m_it) {
             for (int n_it = 0; n_it < BN/WGMMA_N; ++n_it) {
                 for (int w = 0; w < WGMMA_N/16; ++w) {
                     int col = 16*w + 2*(tid % 4);
-                    #define IDX(i, j) ((j + n_it*WGMMA_N)*M + ((i) + m_it*WGMMA_M))
+                    // #define IDX(i, j) ((j + n_it*WGMMA_N)*M + ((i) + m_it*WGMMA_M))
+                    #define IDX(i, j) ((i + m_it * WGMMA_M) * N + (j + n_it * WGMMA_N))
 
                     block_C[IDX(row, col)] = d[w][0];
                     block_C[IDX(row, col+1)] = d[w][1];
