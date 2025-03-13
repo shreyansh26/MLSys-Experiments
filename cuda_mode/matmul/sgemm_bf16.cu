@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
     max_size = SIZE[SIZE.size() - 1];
     std::cout << "Max size: " << max_size << std::endl;
 
-    float alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
+    float alpha = 1.0, beta = 0.0; // GEMM input parameters, C=α*AB+β*C
 
     bf16 *A = nullptr, *B = nullptr, *C = nullptr, *C_ref = nullptr, *C_orig = nullptr, *C_cpu_ref = nullptr; // host matrices
     bf16 *A_d = nullptr, *B_d = nullptr, *C_d = nullptr, *C_ref_d = nullptr, *C_orig_d = nullptr; // device matrices

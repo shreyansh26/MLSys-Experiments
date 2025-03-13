@@ -115,7 +115,7 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul(int M, int N, 
         if (threadIdx.x == 0) {
             cde::cp_async_bulk_tensor_2d_global_to_shared(&sA[0], tensorMapA, block_k_iter*BK, num_block_m*BM, barA);
             tokenA = cuda::device::barrier_arrive_tx(barA, 1, sizeof(sA));
-            cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, block_k_iter*BK, num_block_n*BN, barB);
+            cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, num_block_n*BN, block_k_iter*BK, barB);
             tokenB = cuda::device::barrier_arrive_tx(barB, 1, sizeof(sB));
         } else {
             tokenA = barA.arrive();
@@ -141,24 +141,55 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul(int M, int N, 
         int lane = tid % 32;
         int warp = tid / 32;
         uint32_t row = warp*16 + lane / 4;
-        bf16 *block_C = C + num_block_n*BN*M + num_block_m*BM;
+        // bf16 *block_C = C + num_block_n*BN*M + num_block_m*BM;
+        bf16 *block_C = C + num_block_m*BM*N + num_block_n*BN;
 
         for (int m_it = 0; m_it < BM/WGMMA_M; ++m_it) {
             for (int n_it = 0; n_it < BN/WGMMA_N; ++n_it) {
                 for (int w = 0; w < WGMMA_N/16; ++w) {
                     int col = 16*w + 2*(tid % 4);
-                    #define IDX(i, j) ((j + n_it*WGMMA_N)*M + ((i) + m_it*WGMMA_M))
-
-                    block_C[IDX(row, col)] = d[w][0];
-                    block_C[IDX(row, col+1)] = d[w][1];
-                    block_C[IDX(row+8, col)] = d[w][2];
-                    block_C[IDX(row+8, col+1)] = d[w][3];
-    
-                    block_C[IDX(row, col+8)] = d[w][4];
-                    block_C[IDX(row, col+9)] = d[w][5];
-                    block_C[IDX(row+8, col+8)] = d[w][6];
-                    block_C[IDX(row+8, col+9)] = d[w][7];
-
+                    // #define IDX(i, j) (((j + n_it*WGMMA_N)*M) + ((i) + m_it*WGMMA_M))
+                    #define IDX(i, j) (((i) + m_it*WGMMA_M) * N + ((j) + n_it*WGMMA_N))
+                    {
+                        int index = IDX(row, col);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][0] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row, col+1);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][1] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row+8, col);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][2] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row+8, col+1);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][3] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row, col+8);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][4] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row, col+9);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][5] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row+8, col+8);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][6] + beta * orig);
+                    }
+                    {
+                        int index = IDX(row+8, col+9);
+                        float orig = __bfloat162float(block_C[index]);
+                        block_C[index] = __float2bfloat16(alpha * d[w][7] + beta * orig);
+                    }
                     #undef IDX
                 }
             }
