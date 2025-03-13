@@ -88,7 +88,7 @@ __device__ void wgmma64(float d[4][8], bf16* sA, bf16* sB) {
 }
 
 template<int BM, int BN, int BK, int WGMMA_M, int WGMMA_N, int WGMMA_K, int NUM_THREADS>
-__global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul(int M, int N, int K, bf16* C, const CUtensorMap* tensorMapA, const CUtensorMap* tensorMapB, float alpha, float beta) {
+__global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul_row_major(int M, int N, int K, bf16* C, const CUtensorMap* tensorMapA, const CUtensorMap* tensorMapB, float alpha, float beta) {
     __shared__ alignas(128) bf16 sA[BM*BK];
     __shared__ alignas(128) bf16 sB[BK*BN];
     float d[WGMMA_N/16][8];
@@ -116,6 +116,7 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul(int M, int N, 
             cde::cp_async_bulk_tensor_2d_global_to_shared(&sA[0], tensorMapA, block_k_iter*BK, num_block_m*BM, barA);
             tokenA = cuda::device::barrier_arrive_tx(barA, 1, sizeof(sA));
             cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, block_k_iter*BK, num_block_n*BN, barB);
+            // cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, num_block_n*BN, block_k_iter*BK, barB);
             tokenB = cuda::device::barrier_arrive_tx(barB, 1, sizeof(sB));
         } else {
             tokenA = barA.arrive();
