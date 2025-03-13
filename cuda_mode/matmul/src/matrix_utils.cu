@@ -42,19 +42,37 @@ void print_matrix(const T *A, int M, int N, std::ofstream &fs) {
 }
 
 template <typename T>
-bool verify_matrix(T *matRef, T *matOut, int N, double atol, double rtol) {
+bool verify_matrix(T *matRef, T *matOut, int N, bool diff_layout, double atol, double rtol) {
     if(std::is_same<T, half>::value || std::is_same<T, bf16>::value) {
         atol = 1;
         rtol = 5e-1;
     }
-    int i;
-    for(i = 0; i < N; i++) {
-        double abs_diff = std::fabs((double)matRef[i] - (double)matOut[i]);
-        double tolerance = atol + rtol * std::fabs((double)matRef[i]);
-        if(abs_diff > tolerance) {
-            printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f > Tol %5.2f) at %d\n",
-                   (double)matRef[i], (double)matOut[i], abs_diff, tolerance, i);
-            return false;
+    if (!diff_layout) {
+        int i;
+        for(i = 0; i < N; i++) {
+            double abs_diff = std::fabs((double)matRef[i] - (double)matOut[i]);
+            double tolerance = atol + rtol * std::fabs((double)matRef[i]);
+            if(abs_diff > tolerance) {
+                printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f > Tol %5.2f) at %d\n",
+                    (double)matRef[i], (double)matOut[i], abs_diff, tolerance, i);
+                return false;
+            }
+        }
+    }
+    else {
+        int i, j;
+        int M = (int)sqrt(N);
+        for(i = 0; i < M; i++) {
+            for(j = 0; j < M; j++) {
+                // matRef is col major (i + j*M), matOut is row major (i*M + j) (or vice versa)
+                double abs_diff = std::fabs((double)matRef[i + j*M] - (double)matOut[i*M + j]);
+                double tolerance = atol + rtol * std::fabs((double)matRef[i + j*M]);
+                if(abs_diff > tolerance) {
+                    printf("Divergence! Should %5.2f, Is %5.2f (Diff %5.2f > Tol %5.2f) at %d,%d\n",
+                        (double)matRef[i + j*M], (double)matOut[i*M + j], abs_diff, tolerance, i, j);
+                    return false;
+                }
+            }
         }
     }
     return true;
@@ -66,6 +84,6 @@ template void randomize_matrix<bf16>(bf16 *mat, int N);
 template void print_matrix<float>(const float *A, int M, int N, std::ofstream &fs);
 template void print_matrix<half>(const half *A, int M, int N, std::ofstream &fs);
 template void print_matrix<bf16>(const bf16 *A, int M, int N, std::ofstream &fs);
-template bool verify_matrix<float>(float *matRef, float *matOut, int N, double atol, double rtol);
-template bool verify_matrix<half>(half *matRef, half *matOut, int N, double atol, double rtol);
-template bool verify_matrix<bf16>(bf16 *matRef, bf16 *matOut, int N, double atol, double rtol);
+template bool verify_matrix<float>(float *matRef, float *matOut, int N, bool diff_layout, double atol, double rtol);
+template bool verify_matrix<half>(half *matRef, half *matOut, int N, bool diff_layout, double atol, double rtol);
+template bool verify_matrix<bf16>(bf16 *matRef, bf16 *matOut, int N, bool diff_layout, double atol, double rtol);

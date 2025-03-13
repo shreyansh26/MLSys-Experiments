@@ -208,11 +208,16 @@ int main(int argc, char **argv) {
             //         C_transposed[j * m + i] = C[i * n + j];
             //     }
             // }
-            // Copy transposed result back to C
+            // // Copy transposed result back to C
             // memcpy(C, C_transposed, sizeof(bf16) * m * n);
             // free(C_transposed);            
 
-            if(!verify_matrix<bf16>(C_ref, C, m * n)) {
+            bool diff_layout = false;
+            if (kernel_num == 3) {  
+                diff_layout = true;
+            }
+
+            if(!verify_matrix<bf16>(C_ref, C, m * n, diff_layout)) {
                 std::cout << "Failed to pass the correctness verification against NVIDIA cuBLAS." << std::endl;
                 if(m <= 512) {
                     std::cout << " Logging faulty output into " << errLogFile << "\n";
