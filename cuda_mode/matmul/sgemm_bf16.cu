@@ -14,8 +14,8 @@ typedef __nv_bfloat16 bf16;
 
 const std::string errLogFile = "matrixValidationFailure.txt";
 
-void gemm_cpu_ref(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, bool trans_b = false) {
-    if (!trans_b) {
+void gemm_cpu_ref(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int trans_b = 0) {
+    if (trans_b == 0) {
         // A is MxK, B is KxN, C is MxN
         float alpha_f = __bfloat162float(alpha);
         float beta_f = __bfloat162float(beta);
@@ -29,7 +29,7 @@ void gemm_cpu_ref(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta
             }
         }
     }
-    else {
+    else if(trans_b == 1) {
         // A is MxK, B is NxK, C is MxN
         for (int i = 0; i < M; ++i) {
             for (int j = 0; j < N; ++j) {
@@ -45,6 +45,26 @@ void gemm_cpu_ref(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta
                 C[i * N + j] = __float2bfloat16(alpha * sum + beta * old_c);
             }
         }
+    }
+    else if(trans_b == 2) {
+        // Use column-major indexing on C.
+        // Here, C is stored column-major (i.e. element (i, j) is at C[i + j*M])
+        for (int j = 0; j < N; ++j) {
+            for (int i = 0; i < M; ++i) {
+                float sum = 0.0f;
+                for (int k = 0; k < K; ++k) {
+                    // For A [MxK] in column-major, element (i,k) is A[i + k*M]
+                    // For B [KxN] in column-major, but to compute A x Bᵀ we use Bᵀ(i,k)=B[k + i*K]
+                    sum += __bfloat162float(A[i + k*M]) * __bfloat162float(B[k + j*K]); 
+                }
+                float old_c = __bfloat162float(C[i + j*M]);
+                C[i + j*M] = __float2bfloat16(alpha * sum + beta * old_c);
+            }
+        }
+    }
+    else {
+        std::cerr << "Invalid trans_b value: " << trans_b << std::endl;
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -65,9 +85,9 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    bool trans_b = false;
+    int trans_b = 0;
     if (argc == 3) {
-        trans_b = std::stoi(argv[2]) == 1;
+        trans_b = std::stoi(argv[2]);
     }
 
     // get environment variable for device
