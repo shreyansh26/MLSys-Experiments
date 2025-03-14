@@ -59,7 +59,7 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul_row_major(int 
         warpgroup_wait<0>();
     }
 
-    // Store
+    // Store: perform C = alpha*d + beta*C for each element
     {
         int tid = threadIdx.x;
         int lane = tid % 32;
@@ -74,17 +74,20 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul_row_major(int 
                     int col = 16*w + 2*(tid % 4);
                     // #define IDX(i, j) ((j + n_it*WGMMA_N)*M + ((i) + m_it*WGMMA_M))
                     #define IDX(i, j) ((i + m_it * WGMMA_M) * N + (j + n_it * WGMMA_N))
+                    #define GEMM_STORE(idx, accum) \
+                        (block_C[idx] = __float2bfloat16(alpha * (accum) + beta * __bfloat162float(block_C[idx])))
 
-                    block_C[IDX(row, col)] = d[w][0];
-                    block_C[IDX(row, col+1)] = d[w][1];
-                    block_C[IDX(row+8, col)] = d[w][2];
-                    block_C[IDX(row+8, col+1)] = d[w][3];
-    
-                    block_C[IDX(row, col+8)] = d[w][4];
-                    block_C[IDX(row, col+9)] = d[w][5];
-                    block_C[IDX(row+8, col+8)] = d[w][6];
-                    block_C[IDX(row+8, col+9)] = d[w][7];
+                    GEMM_STORE(IDX(row, col),     d[w][0]);
+                    GEMM_STORE(IDX(row, col + 1), d[w][1]);
+                    GEMM_STORE(IDX(row + 8, col),     d[w][2]);
+                    GEMM_STORE(IDX(row + 8, col + 1), d[w][3]);
 
+                    GEMM_STORE(IDX(row, col + 8),     d[w][4]);
+                    GEMM_STORE(IDX(row, col + 9), d[w][5]);
+                    GEMM_STORE(IDX(row + 8, col + 8), d[w][6]);
+                    GEMM_STORE(IDX(row + 8, col + 9), d[w][7]);
+
+                    #undef GEMM_STORE
                     #undef IDX
                 }
             }
