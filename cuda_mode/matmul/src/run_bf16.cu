@@ -212,11 +212,11 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
             // C = alpha * A @ B + beta * C (A = MxK, B = KxN, C = MxN)
             run_sgemm_cuda_warptiling(M, N, K, alpha, A, B, beta, C);
             break;
-        case 2:
+        case 20:
             // std::cout << "Tensor Core BF16" << std::endl;
             run_tensor_core_row_major(M, N, K, alpha, A, B, beta, C);
             break;
-        case 3:
+        case 21:
             // std::cout << "Tensor Core BF16" << std::endl;
             run_tensor_core_col_major(M, N, K, alpha, A, B, beta, C);
             break;

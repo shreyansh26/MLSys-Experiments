@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
 
     // get kernel number
     int kernel_num = std::stoi(argv[1]);
-    if (kernel_num < 0 || kernel_num > 12) {
+    if (kernel_num < 0 || kernel_num > 100) {
         std::cerr << "Please enter a valid kernel number (0-12)" << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -213,7 +213,7 @@ int main(int argc, char **argv) {
             // free(C_transposed);            
 
             bool diff_layout = false;
-            if (kernel_num == 3) {  
+            if (kernel_num == 21) {  
                 diff_layout = true;
             }
 
