@@ -41,7 +41,8 @@ __global__ void __launch_bounds__(NUM_THREADS) tensor_core_matmul_row_major(int 
             cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, block_k_iter*BK, num_block_n*BN, barB);
             // cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[0], tensorMapB, num_block_n*BN, block_k_iter*BK, barB);
             tokenB = cuda::device::barrier_arrive_tx(barB, 1, sizeof(sB));
-        } else {
+        } 
+        else {
             tokenA = barA.arrive();
             tokenB = barB.arrive();
         }
