@@ -129,6 +129,8 @@ int main(int argc, char **argv) {
 
     bf16 *A = nullptr, *B = nullptr, *C = nullptr, *C_ref = nullptr, *C_orig = nullptr, *C_cpu_ref = nullptr; // host matrices
     bf16 *A_d = nullptr, *B_d = nullptr, *C_d = nullptr, *C_ref_d = nullptr, *C_orig_d = nullptr; // device matrices
+    int *DB = nullptr;
+    int *DB_d = nullptr;
 
     A = (bf16 *)malloc(sizeof(bf16) * max_size * max_size);
     B = (bf16 *)malloc(sizeof(bf16) * max_size * max_size);
@@ -136,23 +138,27 @@ int main(int argc, char **argv) {
     C_orig = (bf16 *)malloc(sizeof(bf16) * max_size * max_size);
     C_ref = (bf16 *)malloc(sizeof(bf16) * max_size * max_size);
     C_cpu_ref = (bf16 *)malloc(sizeof(bf16) * max_size * max_size);
+    DB = (int *)malloc(sizeof(int) * max_size * 128);
 
     randomize_matrix<bf16>(A, max_size * max_size);
     randomize_matrix<bf16>(B, max_size * max_size);
     randomize_matrix<bf16>(C, max_size * max_size);
     memcpy(C_orig, C, sizeof(bf16) * max_size * max_size);
     memcpy(C_cpu_ref, C, sizeof(bf16) * max_size * max_size);
+    memset(DB, ~0, sizeof(int) * max_size * 128);
 
     cudaCheck(cudaMalloc((void **)&A_d, sizeof(bf16) * max_size * max_size));
     cudaCheck(cudaMalloc((void **)&B_d, sizeof(bf16) * max_size * max_size));
     cudaCheck(cudaMalloc((void **)&C_d, sizeof(bf16) * max_size * max_size));
     cudaCheck(cudaMalloc((void **)&C_ref_d, sizeof(bf16) * max_size * max_size));
     cudaCheck(cudaMalloc((void **)&C_orig_d, sizeof(bf16) * max_size * max_size));
+    cudaCheck(cudaMalloc((void **)&DB_d, sizeof(int) * max_size * 128));
     cudaCheck(cudaMemcpy(A_d, A, sizeof(bf16) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(B_d, B, sizeof(bf16) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(C_d, C, sizeof(bf16) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(C_orig_d, C, sizeof(bf16) * max_size * max_size, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(C_ref_d, C, sizeof(bf16) * max_size * max_size, cudaMemcpyHostToDevice));
+    cudaCheck(cudaMemcpy(DB_d, DB, sizeof(int) * max_size * 128, cudaMemcpyHostToDevice));
 
     int repeat_times = 50;
     for(int size : SIZE) {
@@ -193,48 +199,68 @@ int main(int argc, char **argv) {
         }
         
         // For other kernels, larger errors at certain indices start to show up at 1024
-        if(kernel_num != 0 and m <= 512) {
+        if(kernel_num != 0) {
             run_kernel_bf16(0, m, n, k, alpha, A_d, B_d, beta, C_ref_d, handle, trans_b); // cuBLAS
-            run_kernel_bf16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, handle); // Executes the kernel, modifies the result matrix
+            run_kernel_bf16(kernel_num, m, n, k, alpha, A_d, B_d, beta, C_d, handle, trans_b, DB_d); // Executes the kernel, modifies the result matrix
             cudaCheck(cudaDeviceSynchronize());
             cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
             cudaMemcpy(C_ref, C_ref_d, sizeof(bf16) * m * n, cudaMemcpyDeviceToHost);
             cudaMemcpy(C, C_d, sizeof(bf16) * m * n, cudaMemcpyDeviceToHost);
             
-            // Transpose C for verification
-            // bf16* C_transposed = (bf16*)malloc(sizeof(bf16) * m * n);
-            // for (int i = 0; i < m; i++) {
-            //     for (int j = 0; j < n; j++) {
-            //         C_transposed[j * m + i] = C[i * n + j];
-            //     }
-            // }
-            // // Copy transposed result back to C
-            // memcpy(C, C_transposed, sizeof(bf16) * m * n);
-            // free(C_transposed);            
+            if(m <= 512) {
+                // Transpose C for verification
+                // bf16* C_transposed = (bf16*)malloc(sizeof(bf16) * m * n);
+                // for (int i = 0; i < m; i++) {
+                //     for (int j = 0; j < n; j++) {
+                //         C_transposed[j * m + i] = C[i * n + j];
+                //     }
+                // }
+                // // Copy transposed result back to C
+                // memcpy(C, C_transposed, sizeof(bf16) * m * n);
+                // free(C_transposed);            
 
-            bool diff_layout = false;
-            if (kernel_num == 21) {  
-                diff_layout = true;
-            }
-
-            if(!verify_matrix<bf16>(C_ref, C, m * n, diff_layout)) {
-                std::cout << "Failed to pass the correctness verification against NVIDIA cuBLAS." << std::endl;
-                if(m <= 512) {
-                    std::cout << " Logging faulty output into " << errLogFile << "\n";
-                    std::ofstream fs;
-                    fs.open(errLogFile);
-                    fs << "A:\n";
-                    print_matrix<bf16>(A, m, k, fs);
-                    fs << "B:\n";
-                    print_matrix<bf16>(B, k, n, fs);
-                    fs << "C_orig:\n";
-                    print_matrix<bf16>(C_orig, m, n, fs);
-                    fs << "Should (Cublas):\n";
-                    print_matrix<bf16>(C_ref, m, n, fs);
-                    fs << "Kernel out:\n";
-                    print_matrix<bf16>(C, m, n, fs);
+                bool diff_layout = false;
+                if (kernel_num == 21 or kernel_num == 3) {  
+                    diff_layout = true;
                 }
-                exit(EXIT_FAILURE);
+
+                if(!verify_matrix<bf16>(C_ref, C, m * n, diff_layout)) {
+                    std::cout << "Failed to pass the correctness verification against NVIDIA cuBLAS." << std::endl;
+                    if(m <= 512) {
+                        std::cout << " Logging faulty output into " << errLogFile << "\n";
+                        std::ofstream fs;
+                        fs.open(errLogFile);
+                        fs << "A:\n";
+                        print_matrix<bf16>(A, m, k, fs);
+                        fs << "B:\n";
+                        print_matrix<bf16>(B, k, n, fs);
+                        fs << "C_orig:\n";
+                        print_matrix<bf16>(C_orig, m, n, fs);
+                        fs << "Should (Cublas):\n";
+                        print_matrix<bf16>(C_ref, m, n, fs);
+                        fs << "Kernel out:\n";
+                        print_matrix<bf16>(C, m, n, fs);
+                    }
+                    exit(EXIT_FAILURE);
+                }
+            }
+            cudaMemcpy(DB, DB_d, sizeof(int) * m * 128, cudaMemcpyDeviceToHost);
+
+            int i = 0;
+            long sumLoad = 0, cntLoad = 0;
+            long sumCompute = 0, cntCompute = 0;
+            long sumStore = 0, cntStore = 0;
+            int times = 0;
+            while (DB[i] != ~0) {
+                sumLoad += DB[i], cntLoad += DB[i + 1];
+                sumCompute += DB[i + 2], cntCompute += DB[i + 3];
+                sumStore += DB[i + 4], cntStore += DB[i + 5];
+                i += 6;
+                times++;
+            }
+            if (times > 0) {
+                printf("Load: time (%f), count (%ld); Compute: time (%f), count (%ld);  Store: time (%f), count (%ld); Datapoints: %d\n", (sumLoad + .0)/cntLoad, cntLoad, \
+                    (sumCompute + .0)/cntCompute, cntCompute, (sumStore + .0)/cntStore, cntStore, times);
             }
         }
 
