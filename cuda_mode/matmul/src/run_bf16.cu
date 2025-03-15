@@ -201,7 +201,32 @@ void run_tensor_core_col_major(int M, int N, int K, float alpha, bf16 *A, bf16 *
     <<<(M/BM) * (N/BN), NUM_THREADS>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta);
 }
 
-void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b) {
+void run_larger_output_tile(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
+    constexpr int BM = 128;
+    constexpr int BN = 128;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128;
+
+    CUtensorMap *d_tma_map_A = 0;
+    CUtensorMap *d_tma_map_B = 0;
+
+    if (!d_tma_map_A) {
+        d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+        d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+    }
+
+    size_t smem_size = sizeof(SMem<BM, BN, BK>);
+    
+    if (DB) {
+        cudaCheck(cudaFuncSetAttribute(larger_output_tile<BM, BN, BK, NUM_THREADS, true>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+        larger_output_tile<BM, BN, BK, NUM_THREADS, true><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
+    } else {
+        cudaCheck(cudaFuncSetAttribute(larger_output_tile<BM, BN, BK, NUM_THREADS, false>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+        larger_output_tile<BM, BN, BK, NUM_THREADS, false><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
+    }
+}
+
+void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b, int *DB) {
     switch (kernel_num) {
         case 0:
             // std::cout << "cuBLAS BF16" << std::endl;
@@ -219,6 +244,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 21:
             // std::cout << "Tensor Core BF16" << std::endl;
             run_tensor_core_col_major(M, N, K, alpha, A, B, beta, C);
+            break;
+        case 3:
+            // std::cout << "Larger Output Tile BF16" << std::endl;
+            run_larger_output_tile(M, N, K, alpha, A, B, beta, C, DB);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
