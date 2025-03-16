@@ -127,20 +127,6 @@ void run_tensor_core_row_major(int M, int N, int K, float alpha, bf16 *A, bf16 *
     constexpr int BK = 64;
     constexpr int NUM_THREADS = 128;
 
-    // if (!d_tma_map_A) {
-    //     d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
-    //     d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
-    //     _prev_m = M;
-    //     _prev_n = N;
-    //     _prev_k = K;
-    // }
-    // if (d_tma_map_A && (M != _prev_m || N != _prev_n || K != _prev_k)) {
-    //     cudaFree(d_tma_map_A);
-    //     cudaFree(d_tma_map_B);
-    //     d_tma_map_A = nullptr;
-    //     d_tma_map_B = nullptr;
-    // }
-
     CUtensorMap *d_tma_map_A = 0;
     CUtensorMap *d_tma_map_B = 0;
 
@@ -166,20 +152,6 @@ void run_tensor_core_col_major(int M, int N, int K, float alpha, bf16 *A, bf16 *
     constexpr int BN = 64;
     constexpr int BK = 64;
     constexpr int NUM_THREADS = 128;
-
-    // if (!d_tma_map_A) {
-    //     d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
-    //     d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
-    //     _prev_m = M;
-    //     _prev_n = N;
-    //     _prev_k = K;
-    // }
-    // if (d_tma_map_A && (M != _prev_m || N != _prev_n || K != _prev_k)) {
-    //     cudaFree(d_tma_map_A);
-    //     cudaFree(d_tma_map_B);
-    //     d_tma_map_A = nullptr;
-    //     d_tma_map_B = nullptr;
-    // }
 
     CUtensorMap *d_tma_map_A = 0;
     CUtensorMap *d_tma_map_B = 0;
@@ -226,6 +198,27 @@ void run_larger_output_tile(int M, int N, int K, float alpha, bf16 *A, bf16 *B, 
     }
 }
 
+void run_producer_consumer(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
+    constexpr int BM = 128;
+    constexpr int BN = 128;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128 * 2;
+    constexpr int QSIZE = 5;
+
+    CUtensorMap *d_tma_map_A = 0;
+    CUtensorMap *d_tma_map_B = 0;
+
+    if (!d_tma_map_A) {
+        d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+        d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+    }
+
+    size_t smem_size = sizeof(SMemQueue<BM, BN, BK, QSIZE>);
+    
+    cudaCheck(cudaFuncSetAttribute(producer_consumer<BM, BN, BK, NUM_THREADS, QSIZE>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    producer_consumer<BM, BN, BK, NUM_THREADS, QSIZE><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
+}
+
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b, int *DB) {
     switch (kernel_num) {
         case 0:
@@ -248,6 +241,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 3:
             // std::cout << "Larger Output Tile BF16" << std::endl;
             run_larger_output_tile(M, N, K, alpha, A, B, beta, C, DB);
+            break;
+        case 4:
+            // std::cout << "Producer Consumer BF16" << std::endl;
+            run_producer_consumer(M, N, K, alpha, A, B, beta, C, DB);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
