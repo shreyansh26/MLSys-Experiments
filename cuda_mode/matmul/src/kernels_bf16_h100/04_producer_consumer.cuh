@@ -19,7 +19,7 @@ struct SMemQueue {
 template<int BM, int BN, int BK, int NUM_THREADS, int QSIZE>
 __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, int K, bf16* C, const CUtensorMap* tensorMapA, const CUtensorMap* tensorMapB, float alpha, float beta, int *DB) {
     constexpr int WGMMA_M = 64, WGMMA_K = 16, WGMMA_N = BN;
-    constexpr int num_consumers = (NUM_THREADS / 128) - 1;
+    constexpr int num_consumers = (NUM_THREADS / 128) - 1; // number of consumer warp groups
     constexpr int B_WG_M = BM / num_consumers;
 
     // extern __shared__  SMemQueue<BM, BN, BK, QSIZE> smem_queue;
@@ -43,23 +43,27 @@ __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, i
 
     if (threadIdx.x == 0) {
         for (int i = 0; i < QSIZE; ++i) {
-            init(&full[i], num_consumers * 128 + 1);
-            init(&empty[i], num_consumers * 128 + 1);
+            init(&full[i], num_consumers * 128 + 1); // all consumer + 1 producer
+            init(&empty[i], num_consumers * 128 + 1); // all consumer + 1 producer
         }
-        cde::fence_proxy_async_shared_cta();
+        cde::fence_proxy_async_shared_cta(); // barrier and memory initialization visible to all warps
     }
     __syncthreads();
 
-    if(wg_idx == 0) {
+    if(wg_idx == 0) { // producer
+        /*
+        “full” barrier signals that data has been loaded by the producer
+        “empty” barrier signals that the consumer has used the data and the slot is available
+        */
         constexpr int num_regs = (num_consumers <= 2 ? 24 : 32);
         if(tid == 0) {
             int qidx = 0;
             for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
-                if(qidx == QSIZE) 
+                if(qidx == QSIZE) // ring buffer
                     qidx = 0;
                 empty[qidx].wait(empty[qidx].arrive());
-                cde::cp_async_bulk_tensor_2d_global_to_shared(&sA[qidx*BM*BK], tensorMapA, block_k_iter*BK, num_block_m*BM, full[qidx]);
-                cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[qidx*BK*BN], tensorMapB, block_k_iter*BK, num_block_n*BN, full[qidx]);
+                cde::cp_async_bulk_tensor_2d_global_to_shared(&sA[qidx*BM*BK], tensorMapA, block_k_iter*BK, num_block_m*BM, full[qidx]); // col offset, row offset -> sA is row major
+                cde::cp_async_bulk_tensor_2d_global_to_shared(&sB[qidx*BK*BN], tensorMapB, block_k_iter*BK, num_block_n*BN, full[qidx]); // col offset, row offset -> sB is row major
                 barrier::arrival_token _ = cuda::device::barrier_arrive_tx(full[qidx], 1, (BK*BN+BK*BM)*sizeof(bf16));
             }
         }
