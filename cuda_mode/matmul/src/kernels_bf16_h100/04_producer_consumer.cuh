@@ -5,16 +5,11 @@
 #include <cudaTypedefs.h>
 #include <cuda/barrier>
 #include "hopper_utils.cuh"
+#include "data_utils.cuh"
 
 typedef __nv_bfloat16 bf16;
 using barrier = cuda::barrier<cuda::thread_scope_block>;
 namespace cde = cuda::device::experimental;
-
-template<int BM, int BN, int BK, int QSIZE>
-struct SMemQueue {
-    alignas(128) bf16 A[QSIZE*BM*BK];
-    alignas(128) bf16 B[QSIZE*BK*BN];
-};
 
 template<int BM, int BN, int BK, int NUM_THREADS, int QSIZE>
 __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, int K, bf16* C, const CUtensorMap* tensorMapA, const CUtensorMap* tensorMapB, float alpha, float beta, int *DB) {
@@ -69,11 +64,12 @@ __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, i
         }
     }
     else {
+        --wg_idx;
         for(int i = 0; i < QSIZE; ++i) {
             barrier::arrival_token _ = empty[i].arrive();
         }
 
-        float d[BM/WGMMA_M][WGMMA_N/16][8];
+        float d[B_WG_M/WGMMA_M][WGMMA_N/16][8];
         memset(d, 0, sizeof(d));
         int qidx = 0;
         for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
@@ -82,8 +78,8 @@ __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, i
             full[qidx].wait(full[qidx].arrive());
             warpgroup_arrive();
             #pragma unroll
-            for(int m_it = 0; m_it < BM/WGMMA_M; ++m_it) {
-                bf16 *wgmma_sA = sA + qidx*BK*BM + BK*m_it*WGMMA_M;
+            for(int m_it = 0; m_it < B_WG_M/WGMMA_M; ++m_it) {
+                bf16 *wgmma_sA = sA + qidx*BK*BM + (m_it + wg_idx * B_WG_M / WGMMA_M) * WGMMA_M * BK;
                 #pragma unroll 
                 for (int k_it = 0; k_it < BK/WGMMA_K; ++k_it) {
                     wgmma<WGMMA_N, 1, 1, 1, 0, 0>(d[m_it], &wgmma_sA[k_it * WGMMA_K], &sB[qidx*BK*BN + k_it*WGMMA_K]);
@@ -104,8 +100,8 @@ __global__ void __launch_bounds__(NUM_THREADS) producer_consumer(int M, int N, i
             bf16 *block_C = C + num_block_n*BN*M + num_block_m*BM;
 
             #pragma unroll
-            for (int m_it = 0; m_it < BM/WGMMA_M; ++m_it) {
-                int offset_m = m_it * WGMMA_M;
+            for (int m_it = 0; m_it < B_WG_M/WGMMA_M; ++m_it) {
+                int offset_m = m_it * WGMMA_M + wg_idx * B_WG_M;
                 #pragma unroll
                 for (int w = 0; w < WGMMA_N/16; ++w) {
                     int col = 16*w + 2*(tid % 4);
