@@ -5,16 +5,11 @@
 #include <cudaTypedefs.h>
 #include <cuda/barrier>
 #include "hopper_utils.cuh"
+#include "data_utils.cuh"
 
 typedef __nv_bfloat16 bf16;
 using barrier = cuda::barrier<cuda::thread_scope_block>;
 namespace cde = cuda::device::experimental;
-
-template<int BM, int BN, int BK>
-struct SMem {
-    alignas(128) bf16 A[BM*BK];
-    alignas(128) bf16 B[BK*BN];
-};
 
 template<int BM, int BN, int BK, int NUM_THREADS, bool DBG>
 __global__ void __launch_bounds__(NUM_THREADS) larger_output_tile(int M, int N, int K, bf16* C, const CUtensorMap* tensorMapA, const CUtensorMap* tensorMapB, float alpha, float beta, int *DB) {
