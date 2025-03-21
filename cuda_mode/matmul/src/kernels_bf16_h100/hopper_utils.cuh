@@ -259,3 +259,13 @@ __device__ inline void wgmma(float d[WGMMA_N/16][8], bf16* sA, bf16* sB) {
     if constexpr (WGMMA_N == 32)
         wgmma32<1, 1, 1, 0, 0>(d, sA, sB);
 }
+
+template <uint32_t RegCount>
+__device__ void warpgroup_reg_alloc() {
+    asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" : : "n"(RegCount));
+}
+
+template <uint32_t RegCount>
+__device__ void warpgroup_reg_dealloc() {
+    asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(RegCount));
+}
