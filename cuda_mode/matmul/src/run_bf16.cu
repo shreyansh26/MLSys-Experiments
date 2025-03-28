@@ -119,6 +119,8 @@ void run_sgemm_cuda_warptiling(int M, int N, int K, float alpha, bf16 *A, bf16 *
 
 CUtensorMap *d_tma_map_A = 0;
 CUtensorMap *d_tma_map_B = 0;
+CUtensorMap d_tma_map_A_value;
+CUtensorMap d_tma_map_B_value;
 int _prev_m=0, _prev_n=0, _prev_k=0;
 
 void run_tensor_core_row_major(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C) {
@@ -224,7 +226,7 @@ void run_producer_consumer_larger_output_tile(int M, int N, int K, float alpha, 
     constexpr int BN = 256;
     constexpr int BK = 64;
     constexpr int NUM_THREADS = 128 * 3;
-    constexpr int QSIZE = 3;
+    constexpr int QSIZE = 3; // Can be upto 4 -> no perf benefits at 4 vs 3 though
 
     CUtensorMap *d_tma_map_A = 0;
     CUtensorMap *d_tma_map_B = 0;
@@ -238,6 +240,27 @@ void run_producer_consumer_larger_output_tile(int M, int N, int K, float alpha, 
     
     cudaCheck(cudaFuncSetAttribute(producer_consumer_larger_output_tile<BM, BN, BK, NUM_THREADS, QSIZE>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
     producer_consumer_larger_output_tile<BM, BN, BK, NUM_THREADS, QSIZE><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
+}
+
+void run_block_scheduling_store_latency(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
+    constexpr int BM = 128;
+    constexpr int BN = 256;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128 * 3;
+    constexpr int QSIZE = 3;
+    constexpr int NUM_SM = 128;
+
+
+    if (_prev_m != M) {
+        d_tma_map_A_value = allocate_and_create_tensor_map_value<BM, BK>(A, M / BM, K / BK);
+        d_tma_map_B_value = allocate_and_create_tensor_map_value<BN, BK>(B, N / BN, K / BK);
+        _prev_m = M;
+    }
+
+    size_t smem_size = sizeof(SMemQueue<BM, BN, BK, QSIZE>);
+    
+    cudaCheck(cudaFuncSetAttribute(block_scheduling_store_latency<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    block_scheduling_store_latency<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM><<<NUM_SM, NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A_value, d_tma_map_B_value, alpha, beta, DB);
 }
 
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b, int *DB) {
@@ -270,6 +293,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 5:
             // std::cout << "Producer Consumer Larger Output Tile BF16" << std::endl;
             run_producer_consumer_larger_output_tile(M, N, K, alpha, A, B, beta, C, DB);
+            break;
+        case 6:
+            // std::cout << "Block Scheduling Store Latency BF16" << std::endl;
+            run_block_scheduling_store_latency(M, N, K, alpha, A, B, beta, C, DB);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
