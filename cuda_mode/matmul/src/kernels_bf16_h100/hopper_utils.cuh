@@ -62,6 +62,13 @@ __host__ static inline CUtensorMap* allocate_and_create_tensor_map(bf16* src, in
     return tma_map_d;
 }
 
+template <int BlockMajorSize, int BlockMinorSize>
+__host__ static inline CUtensorMap allocate_and_create_tensor_map_value(bf16* src, int blocks_height, int blocks_width) {
+    CUtensorMap tma_map_host;
+    create_tensor_map<BlockMajorSize, BlockMinorSize>(&tma_map_host, src, blocks_height, blocks_width);
+    return tma_map_host;
+}
+
 template<int ScaleD, int ScaleA, int ScaleB, int TransA, int TransB>
 __device__ void wgmma16(float d[1][8], bf16* sA, bf16* sB) {
     uint64_t desc_a = make_smem_desc(&sA[0]);
@@ -269,3 +276,60 @@ template <uint32_t RegCount>
 __device__ void warpgroup_reg_dealloc() {
     asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(RegCount));
 }
+
+template<int VERSION, int NUM_SM, int BM, int BN, int TM, int TN>
+struct Schedule;
+
+template<int NUM_SM, int BM, int BN, int TM, int TN>
+struct Schedule<0, NUM_SM, BM, BN, TM, TN> {
+    int st, en;
+
+    __device__ __forceinline__ Schedule(int M, int N, int block) {
+        int total_blocks = M*N/(BM*BN);
+        int blocks_per_sm = total_blocks / NUM_SM;
+        int extra_blocks = total_blocks % NUM_SM;
+        if (block < extra_blocks) {
+            st = block*(blocks_per_sm + 1);
+            en = st + blocks_per_sm + 1;
+        } else {
+            st = extra_blocks + block*blocks_per_sm;
+            en = st + blocks_per_sm;
+        }
+    }
+
+    __device__ __forceinline__ int next() {
+        if (en == st) return -1;
+        return st++;
+    }
+};
+
+template<int NUM_SM, int BM, int BN, int TM, int TN>
+struct Schedule<1, NUM_SM, BM, BN, TM, TN> {
+    int block;
+    int it;
+    int total_blocks_m;
+    int total_blocks_n;
+
+    __device__ __forceinline__ Schedule(int M, int N, int _block) {
+        block = _block;
+        it = 0;
+        total_blocks_m = M/BM;
+        total_blocks_n = N/BN;
+        assert(total_blocks_m%TM == 0 && total_blocks_n%TN == 0);
+    }
+
+    __device__ __forceinline__ int next() {
+        int num = it*NUM_SM + block;
+        if (num >= total_blocks_m*total_blocks_n) 
+            return -1;
+        
+        int cur_tile = num / (TM*TN);
+        int cur_tile_pos = num % (TM*TN);
+        int m = TM*(cur_tile / (total_blocks_n/TN));
+        int n = TN*(cur_tile % (total_blocks_n/TN));
+        m += cur_tile_pos / TN;
+        n += cur_tile_pos % TN;
+        ++it;
+        return m*total_blocks_n + n;
+    }
+};
