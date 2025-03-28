@@ -6,3 +6,4 @@
 #include "kernels_bf16_h100/03_larger_output_tile.cuh"
 #include "kernels_bf16_h100/04_producer_consumer.cuh"
 #include "kernels_bf16_h100/05_producer_consumer_larger_output_tile.cuh"
+#include "kernels_bf16_h100/06_block_scheduling_store_latency.cuh"
