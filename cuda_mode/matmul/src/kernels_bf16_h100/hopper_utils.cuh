@@ -4,6 +4,7 @@
 #include <cuda_bf16.h>
 #include <cudaTypedefs.h>
 #include <cuda/barrier>
+#include <cuda/cmath>
 
 typedef __nv_bfloat16 bf16;
 using barrier = cuda::barrier<cuda::thread_scope_block>;
@@ -50,6 +51,26 @@ void create_tensor_map(CUtensorMap *tma_map, bf16* gmem_ptr, int blocks_height, 
         CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
 
     assert(result == CUDA_SUCCESS);
+}
+
+template <int BlockMajorSize, int BlockMinorSize>
+__host__ static inline CUtensorMap create_tensor_map_value(bf16* gmem_ptr, int global_height, int global_width) {
+    CUtensorMap tma_map;
+    void* gmem_address = (void*)gmem_ptr;
+    static_assert(BlockMinorSize >= 64);
+    assert(global_width % 64 == 0);
+    uint64_t gmem_prob_shape[5] = {64, (uint64_t)global_height, (uint64_t)global_width/64, 1, 1};
+    uint64_t gmem_prob_stride[5] = {sizeof(bf16) * global_width, 64*sizeof(bf16), 0, 0, 0};
+    uint32_t smem_box_shape[5] = {64, uint32_t(BlockMajorSize), uint32_t(BlockMinorSize/64), 1, 1};
+    uint32_t smem_box_stride[5] = {1, 1, 1, 1, 1};
+
+    CUresult result = cuTensorMapEncodeTiled(
+        &tma_map, CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 5, gmem_address, gmem_prob_shape,
+        gmem_prob_stride, smem_box_shape, smem_box_stride, CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
+
+    assert(result == CUDA_SUCCESS);
+    return tma_map;
 }
 
 template <int BlockMajorSize, int BlockMinorSize>
@@ -280,6 +301,9 @@ __device__ void warpgroup_reg_dealloc() {
 template<int VERSION, int NUM_SM, int BM, int BN, int TM, int TN>
 struct Schedule;
 
+template<int VERSION, int NUM_SM, int BM, int BN, int TM, int TN>
+struct ScheduleTogether;
+
 template<int NUM_SM, int BM, int BN, int TM, int TN>
 struct Schedule<0, NUM_SM, BM, BN, TM, TN> {
     int st, en;
@@ -333,3 +357,87 @@ struct Schedule<1, NUM_SM, BM, BN, TM, TN> {
         return m*total_blocks_n + n;
     }
 };
+
+template<int NUM_SM, int BM, int BN, int TM, int TN>
+struct ScheduleTogether<1, NUM_SM, BM, BN, TM, TN> {
+    int block;
+    int it;
+    int total_blocks_m, total_blocks_n;
+
+    __device__ __forceinline__ ScheduleTogether(int M, int N, int _block) {
+        block = _block;
+        it = 0;
+        total_blocks_m = cuda::ceil_div(M, BM);
+        total_blocks_n = cuda::ceil_div(N, BN);
+        assert(cuda::ceil_div(M, BM)%TM == 0 && total_blocks_n%TN == 0);
+    }
+
+    __device__ __forceinline__ bool next(int &block_m, int& block_n) {
+        int num = it*NUM_SM + block;
+        if (num >= total_blocks_m*total_blocks_n) {return false;}
+        
+        int cur_tile = num / (TM*TN);
+        int cur_tile_pos = num % (TM*TN);
+        block_m = TM*(cur_tile / (total_blocks_n/TN));
+        block_n = TN*(cur_tile % (total_blocks_n/TN));
+        block_m += cur_tile_pos / TN;
+        block_n += cur_tile_pos % TN;
+        ++it;
+        return true;
+    }
+};
+
+__device__ static __forceinline__ void init_barrier(uint64_t* bar, int thread_count, int transaction_count) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar)); 
+    asm volatile (
+        "mbarrier.init.shared::cta.b64 [%0], %1;\n"
+        :: "r"(bar_ptr), "r"(thread_count+transaction_count)
+    );
+}
+
+__device__ static __forceinline__ void expect_bytes(uint64_t* bar, uint32_t bytes) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar)); 
+    asm volatile ("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
+        :: "r"(bar_ptr), "r"(bytes));
+}
+
+__device__ static inline void load_async(bf16 *dst, void const* const src_tma_map, uint64_t* bar, int global_col_idx, int global_row_idx) {
+    uint64_t tma_ptr  = reinterpret_cast<uint64_t>(src_tma_map);
+    uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar));
+    uint32_t dst_ptr  = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
+
+    asm volatile (
+        "cp.async.bulk.tensor.5d.shared::cluster.global.tile.mbarrier::complete_tx::bytes"
+        " [%0], [%1, {%3, %4, %5, 0, 0}], [%2];"
+        :
+        : "r"(dst_ptr), "l"(tma_ptr), "r"(mbar_ptr),
+        "n"(0), "r"(global_row_idx), "r"(global_col_idx/64)
+        : "memory"
+    );
+}
+
+__device__ static __forceinline__ void wait(uint64_t* bar, int kPhaseBit) {
+    uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar)); 
+    asm volatile (
+        "{\n"
+        ".reg .pred                P1;\n"
+        "LAB_WAIT:\n"
+        "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1;\n"
+        "@P1                       bra.uni DONE;\n"
+        "bra.uni                   LAB_WAIT;\n"
+        "DONE:\n"
+        "}\n"
+        :: "r"(mbar_ptr),
+        "r"(kPhaseBit)
+    );
+}
+
+__device__ static __forceinline__ void arrive(uint64_t* bar, uint32_t count=1) {
+    uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar)); 
+    asm volatile (
+        "mbarrier.arrive.release.cta.shared::cta.b64 _, [%0], %1;\n"
+        :
+        : "r"(mbar_ptr), "r"(count)
+        : "memory"
+    );
+}
