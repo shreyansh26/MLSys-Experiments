@@ -284,6 +284,30 @@ void run_faster_barriers(int M, int N, int K, float alpha, bf16 *A, bf16 *B, flo
     faster_barriers<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM><<<NUM_SM, NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A_value, d_tma_map_B_value, alpha, beta, DB);
 }
 
+void run_thread_block_cluster(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
+    constexpr int BM = 128;
+    constexpr int BN = 256;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128 * 3;
+    constexpr int QSIZE = 3;
+    constexpr int NUM_SM = 128;
+    constexpr int CLUSTER_M = 2;
+    constexpr int CLUSTER_N = 1;
+
+    static_assert((NUM_SM % (CLUSTER_M*CLUSTER_N)) == 0); // Since NUM_SM is the number of thread blocks
+
+    if (_prev_m != M) {
+        d_tma_map_A_value = create_tensor_map_value<BM, BK>(A, M, K);
+        d_tma_map_B_value = create_tensor_map_value<BN, BK>(B, N, K);
+        _prev_m = M;
+    }
+
+    size_t smem_size = sizeof(SMemQueue<BM, BN, BK, QSIZE>);
+    
+    cudaCheck(cudaFuncSetAttribute(thread_block_cluster<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM, CLUSTER_M, CLUSTER_N>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    thread_block_cluster<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM, CLUSTER_M, CLUSTER_N><<<NUM_SM, NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A_value, d_tma_map_B_value, alpha, beta, DB);
+}
+
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b, int *DB) {
     switch (kernel_num) {
         case 0:
@@ -322,6 +346,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 7:
             // std::cout << "Faster Barriers BF16" << std::endl;
             run_faster_barriers(M, N, K, alpha, A, B, beta, C, DB);
+            break;
+        case 8:
+            // std::cout << "Thread Block Cluster BF16" << std::endl;
+            run_thread_block_cluster(M, N, K, alpha, A, B, beta, C, DB);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");
