@@ -8,3 +8,4 @@
 #include "kernels_bf16_h100/05_producer_consumer_larger_output_tile.cuh"
 #include "kernels_bf16_h100/06_block_scheduling_store_latency.cuh"
 #include "kernels_bf16_h100/07_faster_barriers.cuh"
+#include "kernels_bf16_h100/08_thread_block_cluster.cuh"
