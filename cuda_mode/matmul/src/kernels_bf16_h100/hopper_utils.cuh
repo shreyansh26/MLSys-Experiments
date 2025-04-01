@@ -441,3 +441,46 @@ __device__ static __forceinline__ void arrive(uint64_t* bar, uint32_t count=1) {
         : "memory"
     );
 }
+
+__device__ static __forceinline__ void wait_cluster(uint64_t* bar, int kPhaseBit) {
+    uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar)); 
+    asm volatile (
+        "{\n"
+        ".reg .pred                P1;\n"
+        "LAB_WAIT:\n"
+        "mbarrier.try_wait.parity.acquire.cluster.shared::cta.b64 P1, [%0], %1;\n"
+        "@P1                       bra.uni DONE;\n"
+        "bra.uni                   LAB_WAIT;\n"
+        "DONE:\n"
+        "}\n"
+        :: "r"(mbar_ptr),
+        "r"(kPhaseBit)
+    );
+}
+
+__device__ static inline void load_async_multicast(bf16 *dst, void const* const src_tma_map, uint64_t* bar, int global_col_idx, int global_row_idx, uint16_t cluster_mask) {
+    uint64_t tma_ptr  = reinterpret_cast<uint64_t>(src_tma_map);
+    uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(bar));
+    uint32_t dst_ptr  = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
+
+    asm volatile (
+        "cp.async.bulk.tensor.3d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster"
+        " [%0], [%1, {%3, %4, %5}], [%2], %6;"
+        :
+        : "r"(dst_ptr), "l"(tma_ptr), "r"(mbar_ptr),
+        "n"(0), "r"(global_row_idx), "r"(global_col_idx/64), "h"(cluster_mask)
+        : "memory"
+    );
+}
+
+__device__ void arrive_cluster(uint64_t* bar, uint32_t cta_id, uint32_t count=1) {
+    uint32_t smem_addr = static_cast<uint32_t>(__cvta_generic_to_shared(bar));
+    asm volatile(
+        "{\n\t"
+        ".reg .b32 remAddr32;\n\t"
+        "mapa.shared::cluster.u32  remAddr32, %0, %1;\n\t"
+        "mbarrier.arrive.shared::cluster.b64  _, [remAddr32], %2;\n\t"
+        "}"
+        :
+        : "r"(smem_addr), "r"(cta_id), "r"(count));
+}
