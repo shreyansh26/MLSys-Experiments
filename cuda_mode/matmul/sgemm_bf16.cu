@@ -220,7 +220,7 @@ int main(int argc, char **argv) {
                 // free(C_transposed);            
 
                 bool diff_layout = false;
-                if (kernel_num == 21 or kernel_num == 3 or kernel_num == 4 or kernel_num == 5 or kernel_num == 6 or kernel_num == 7 or kernel_num == 8) {  
+                if (kernel_num == 21 or kernel_num == 3 or kernel_num == 4 or kernel_num == 5 or kernel_num == 6 or kernel_num == 7 or kernel_num == 8 or kernel_num == 9) {  
                     diff_layout = true;
                 }
 
