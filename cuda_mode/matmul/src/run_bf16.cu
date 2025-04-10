@@ -309,28 +309,6 @@ void run_thread_block_cluster(int M, int N, int K, float alpha, bf16 *A, bf16 *B
 }
 
 void run_micro_optimizations(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
-    // constexpr int BM = 128;
-    // constexpr int BN = 256;
-    // constexpr int BK = 64;
-    // constexpr int NUM_THREADS = 128 * 3;
-    // constexpr int QSIZE = 3;
-    // constexpr int NUM_SM = 128;
-    // constexpr int CLUSTER_M = 2;
-    // constexpr int CLUSTER_N = 1;
-
-    // static_assert((NUM_SM % (CLUSTER_M*CLUSTER_N)) == 0); // Since NUM_SM is the number of thread blocks
-
-    // if (_prev_m != M) {
-    //     d_tma_map_A_value = create_tensor_map_value<BM, BK>(A, M, K);
-    //     d_tma_map_B_value = create_tensor_map_value<BN, BK>(B, N, K);
-    //     _prev_m = M;
-    // }
-
-    // size_t smem_size = sizeof(SMemQueue<BM, BN, BK, QSIZE>);
-    
-    // cudaCheck(cudaFuncSetAttribute(micro_optimizations<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM, CLUSTER_M, CLUSTER_N>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-    // micro_optimizations<BM, BN, BK, NUM_THREADS, QSIZE, NUM_SM, CLUSTER_M, CLUSTER_N><<<NUM_SM, NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A_value, d_tma_map_B_value, alpha, beta, DB);
-
     constexpr int BM = 128;
     constexpr int BN = 256;
     constexpr int BK = 64;
@@ -349,6 +327,30 @@ void run_micro_optimizations(int M, int N, int K, float alpha, bf16 *A, bf16 *B,
     
     cudaCheck(cudaFuncSetAttribute(micro_optimizations<BM, BN, BK, NUM_THREADS, QSIZE>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
     micro_optimizations<BM, BN, BK, NUM_THREADS, QSIZE><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
+}
+
+void run_async_stores(int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, int *DB) {
+    constexpr int BM = 128;
+    constexpr int BN = 256;
+    constexpr int BK = 64;
+    constexpr int NUM_THREADS = 128 * 3;
+    constexpr int QSIZE = 3; // Can be upto 4 -> no perf benefits at 4 vs 3 though
+
+    CUtensorMap *d_tma_map_A = 0;
+    CUtensorMap *d_tma_map_B = 0;
+    CUtensorMap *d_tma_map_C = 0;
+
+    if (!d_tma_map_A) {
+        d_tma_map_A = allocate_and_create_tensor_map<BM, BK>(A, M / BM, K / BK);
+        d_tma_map_B = allocate_and_create_tensor_map<BN, BK>(B, N / BN, K / BK);
+        d_tma_map_C = allocate_and_create_tensor_map<BN, BM, false>(C, N / BN, M / BM);
+    }
+
+    constexpr size_t smem_size = sizeof(SMemQueue2<BM, BN, BK, QSIZE>);
+    static_assert(smem_size < 256 * 1024);  
+
+    cudaCheck(cudaFuncSetAttribute(async_stores<BM, BN, BK, NUM_THREADS, QSIZE>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    async_stores<BM, BN, BK, NUM_THREADS, QSIZE><<<(M/BM) * (N/BN), NUM_THREADS, smem_size>>>(M, N, K, C, d_tma_map_C, d_tma_map_A, d_tma_map_B, alpha, beta, DB);
 }
 
 void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, bf16 *B, float beta, bf16 *C, cublasHandle_t handle, int trans_b, int *DB) {
@@ -397,6 +399,10 @@ void run_kernel_bf16(int kernel_num, int M, int N, int K, float alpha, bf16 *A, 
         case 9:
             // std::cout << "Micro Optimizations BF16" << std::endl;
             run_micro_optimizations(M, N, K, alpha, A, B, beta, C, DB);
+            break;
+        case 10:
+            // std::cout << "Async Stores BF16" << std::endl;
+            run_async_stores(M, N, K, alpha, A, B, beta, C, DB);
             break;
         default:
             throw std::invalid_argument("Invalid kernel number");

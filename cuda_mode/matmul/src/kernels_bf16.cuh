@@ -10,3 +10,4 @@
 #include "kernels_bf16_h100/07_faster_barriers.cuh"
 #include "kernels_bf16_h100/08_thread_block_cluster.cuh"
 #include "kernels_bf16_h100/095_micro_optimizations.cuh"
+#include "kernels_bf16_h100/10_async_stores.cuh"
