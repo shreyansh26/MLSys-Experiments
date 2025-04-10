@@ -37,7 +37,7 @@ __device__ void warpgroup_wait() {
     asm volatile("wgmma.wait_group.sync.aligned %0;\n" ::"n"(N) : "memory");
 }
 
-template <int BlockMajorSize, int BlockMinorSize>
+template <int BlockMajorSize, int BlockMinorSize, bool swizzle = true>
 void create_tensor_map(CUtensorMap *tma_map, bf16* gmem_ptr, int blocks_height, int blocks_width) {
     void* gmem_address = (void*)gmem_ptr;
     uint64_t gmem_prob_shape[5] = {(uint64_t)BlockMinorSize*blocks_width, (uint64_t)BlockMajorSize*blocks_height, 1, 1, 1};
@@ -48,7 +48,7 @@ void create_tensor_map(CUtensorMap *tma_map, bf16* gmem_ptr, int blocks_height, 
     CUresult result = cuTensorMapEncodeTiled(
         tma_map, CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 2, gmem_address, gmem_prob_shape,
         gmem_prob_stride + 1, smem_box_shape, smem_box_stride, CU_TENSOR_MAP_INTERLEAVE_NONE,
-        CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
+        swizzle ? CU_TENSOR_MAP_SWIZZLE_128B : CU_TENSOR_MAP_SWIZZLE_NONE, CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
 
     assert(result == CUDA_SUCCESS);
 }
@@ -73,12 +73,12 @@ __host__ static inline CUtensorMap create_tensor_map_value(bf16* gmem_ptr, int g
     return tma_map;
 }
 
-template <int BlockMajorSize, int BlockMinorSize>
+template <int BlockMajorSize, int BlockMinorSize, bool swizzle = true>
 __host__ static inline CUtensorMap* allocate_and_create_tensor_map(bf16* src, int blocks_height, int blocks_width) {
     CUtensorMap *tma_map_d;
     cudaMalloc(&tma_map_d, sizeof(CUtensorMap));
     CUtensorMap tma_map_host;
-    create_tensor_map<BlockMajorSize, BlockMinorSize>(&tma_map_host, src, blocks_height, blocks_width);
+    create_tensor_map<BlockMajorSize, BlockMinorSize, swizzle>(&tma_map_host, src, blocks_height, blocks_width);
     cudaMemcpy(tma_map_d, &tma_map_host, sizeof(CUtensorMap), cudaMemcpyHostToDevice);
     return tma_map_d;
 }
@@ -483,4 +483,20 @@ __device__ void arrive_cluster(uint64_t* bar, uint32_t cta_id, uint32_t count=1)
         "}"
         :
         : "r"(smem_addr), "r"(cta_id), "r"(count));
+}
+
+
+__device__ static inline void store_async(void const* dst_tma_map, bf16 *src, int global_col_idx, int global_row_idx) {
+    uint64_t tma_ptr  = reinterpret_cast<uint64_t>(dst_tma_map);
+    uint32_t src_ptr  = static_cast<uint32_t>(__cvta_generic_to_shared(src));
+
+    asm volatile (
+        "cp.async.bulk.tensor.3d.global.shared::cta.tile.bulk_group"
+        " [%0, {%2, %3, %4}], [%1];"
+        :
+        : "l"(tma_ptr), "r"(src_ptr),
+        "n"(0), "r"(global_row_idx), "r"(global_col_idx / 64)
+        : "memory"
+    );
+
 }

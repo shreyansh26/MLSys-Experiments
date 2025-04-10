@@ -15,3 +15,10 @@ struct SMem {
     alignas(128) bf16 A[BM*BK];
     alignas(128) bf16 B[BK*BN];
 };
+
+template <int BM, int BN, int BK, int QSIZE>
+struct SMemQueue2 {
+    alignas(128) bf16 A[BM*BK*QSIZE];
+    alignas(128) bf16 B[BK*BN*QSIZE];
+    alignas(128) bf16 C[BN*BM];
+};
