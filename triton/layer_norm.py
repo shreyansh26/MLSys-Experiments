@@ -1,7 +1,6 @@
 import triton
 import triton.language as tl
 import torch
-import torch.nn.functional as F
 
 @triton.jit
 def layer_norm_fwd_kernel(
@@ -292,8 +291,6 @@ def create_perf_report(mode, bench_type):
             plot_name=plot_name,
             args={'M': 4096, 'dtype': torch.float16, 'mode': mode},
         ))
-
-# Insert generic benchmark function and factory for creating benchmark variants
 
 def bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps=1e-5, device="cuda"):
     x_shape = (M, N)
