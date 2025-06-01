@@ -52,6 +52,105 @@ def layer_norm_fwd_kernel(
         y = y * g + b
         tl.store(Y + cols, y, mask=mask)
 
+@triton.jit
+def layer_norm_bwd_kernel_dx(
+    DX, DY,
+    DG, DB,
+    X,
+    G, B,
+    M, RS,
+    N, stride,
+    LOCK,
+    GROUP_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr):
+    
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_SIZE_N)
+    mask = cols < N
+    
+    X += row * stride
+    DX += row * stride
+    DY += row * stride
+
+    # Get lock ids
+    lock_id = row % GROUP_SIZE_M
+    LOCK += lock_id
+    COUNT = LOCK + GROUP_SIZE_M
+
+    DG = DG + lock_id * N + cols
+    DB = DB + lock_id * N + cols
+
+    # Load data
+    x = tl.load(X + cols, mask=mask, other=0).to(tl.float32)
+    dy = tl.load(DY + cols, mask=mask, other=0).to(tl.float32)
+    g = tl.load(G + cols, mask=mask, other=1).to(tl.float32)
+    
+    m = tl.load(M + row)
+    rstd = tl.load(RS + row)
+
+    # Compute dx
+    xhat = (x - m) * rstd
+    gdy = g * dy
+    c1 = tl.sum(xhat * gdy, axis=0) / N
+    c2 = tl.sum(gdy, axis=0) / N
+    dx = (gdy - (xhat * c1 + c2)) * rstd
+
+    # Write dx
+    tl.store(DX + cols, dx, mask=mask)
+
+    # Accumulate partial sums for dg and db
+    partial_dg = (dy * xhat).to(g.dtype)
+    partial_db = dy.to(g.dtype)
+
+    while tl.atomic_cas(LOCK, 0, 1) == 1:
+        pass
+
+    count = tl.load(COUNT)
+
+    # No accumulation in first store
+    if count == 0:
+        tl.atomic_xchg(COUNT, 1)
+    else:
+        partial_dg += tl.load(DG, mask=mask)
+        partial_db += tl.load(DB, mask=mask)
+
+    tl.store(DG, partial_dg, mask=mask)
+    tl.store(DB, partial_db, mask=mask)
+
+    # barrier to ensure all threads finished before releasing lock
+    tl.debug_barrier()
+
+    # Release lock
+    tl.atomic_xchg(LOCK, 0)
+
+@triton.jit
+def layer_norm_bwd_kernel_dgdb(
+    DG_partial, DB_partial,
+    DG, DB,
+    M, N,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr):
+    
+    pid = tl.program_id(0)
+    cols = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+
+    dg_partial = tl.zeros([BLOCK_SIZE_M, BLOCK_SIZE_N], dtype=tl.float32)
+    db_partial = tl.zeros([BLOCK_SIZE_M, BLOCK_SIZE_N], dtype=tl.float32)
+
+    for i in range(0, M, BLOCK_SIZE_M):
+        rows = i + tl.arange(0, BLOCK_SIZE_M)
+        mask = (rows[:, None] < M) & (cols[None, :] < N)
+        offset = rows[:, None] * N + cols[None, :]
+
+        dg_partial += tl.load(DG_partial + offset, mask=mask, other=0)
+        db_partial += tl.load(DB_partial + offset, mask=mask, other=0)
+
+    sum_dg = tl.sum(dg_partial, axis=0)
+    sum_db = tl.sum(db_partial, axis=0)
+
+    tl.store(DG + cols, sum_dg, mask=cols < N)
+    tl.store(DB + cols, sum_db, mask=cols < N)
+
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, gamma, bias, eps=1e-5): # Keep args same as torch.nn.functional.layer_norm
