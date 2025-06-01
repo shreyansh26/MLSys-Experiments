@@ -65,63 +65,86 @@ def layer_norm_bwd_kernel_dx(
     BLOCK_SIZE_N: tl.constexpr):
     
     row = tl.program_id(0)
-    cols = tl.arange(0, BLOCK_SIZE_N)
-    mask = cols < N
     
     X += row * stride
     DX += row * stride
     DY += row * stride
+
+    # Load mean and rstd for this row
+    m = tl.load(M + row)
+    rstd = tl.load(RS + row)
+
+    # First pass: compute c1 and c2 across all elements
+    c1_sum = tl.zeros([1], dtype=tl.float32)
+    c2_sum = tl.zeros([1], dtype=tl.float32)
+    
+    for block_start in range(0, N, BLOCK_SIZE_N):
+        cols = block_start + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        x = tl.load(X + cols, mask=mask, other=0).to(tl.float32)
+        dy = tl.load(DY + cols, mask=mask, other=0).to(tl.float32)
+        g = tl.load(G + cols, mask=mask, other=1).to(tl.float32)
+        
+        xhat = (x - m) * rstd
+        gdy = g * dy
+        c1_sum += tl.sum(xhat * gdy, axis=0)
+        c2_sum += tl.sum(gdy, axis=0)
+    
+    c1 = c1_sum / N
+    c2 = c2_sum / N
 
     # Get lock ids
     lock_id = row % GROUP_SIZE_M
     LOCK += lock_id
     COUNT = LOCK + GROUP_SIZE_M
 
-    DG = DG + lock_id * N + cols
-    DB = DB + lock_id * N + cols
+    # Second pass: compute dx and accumulate dg, db
+    for block_start in range(0, N, BLOCK_SIZE_N):
+        cols = block_start + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        DG_block = DG + lock_id * N + cols
+        DB_block = DB + lock_id * N + cols
 
-    # Load data
-    x = tl.load(X + cols, mask=mask, other=0).to(tl.float32)
-    dy = tl.load(DY + cols, mask=mask, other=0).to(tl.float32)
-    g = tl.load(G + cols, mask=mask, other=1).to(tl.float32)
-    
-    m = tl.load(M + row)
-    rstd = tl.load(RS + row)
+        # Load data for this block
+        x = tl.load(X + cols, mask=mask, other=0).to(tl.float32)
+        dy = tl.load(DY + cols, mask=mask, other=0).to(tl.float32)
+        g = tl.load(G + cols, mask=mask, other=1).to(tl.float32)
 
-    # Compute dx
-    xhat = (x - m) * rstd
-    gdy = g * dy
-    c1 = tl.sum(xhat * gdy, axis=0) / N
-    c2 = tl.sum(gdy, axis=0) / N
-    dx = (gdy - (xhat * c1 + c2)) * rstd
+        # Compute dx for this block
+        xhat = (x - m) * rstd
+        gdy = g * dy
+        dx = (gdy - (xhat * c1 + c2)) * rstd
 
-    # Write dx
-    tl.store(DX + cols, dx, mask=mask)
+        # Write dx for this block
+        tl.store(DX + cols, dx, mask=mask)
 
-    # Accumulate partial sums for dg and db
-    partial_dg = (dy * xhat).to(g.dtype)
-    partial_db = dy.to(g.dtype)
+        # Accumulate partial sums for dg and db
+        partial_dg = (dy * xhat).to(g.dtype)
+        partial_db = dy.to(g.dtype)
 
-    while tl.atomic_cas(LOCK, 0, 1) == 1:
-        pass
+        # Acquire lock
+        while tl.atomic_cas(LOCK, 0, 1) == 1:
+            pass
 
-    count = tl.load(COUNT)
+        count = tl.load(COUNT)
 
-    # No accumulation in first store
-    if count == 0:
-        tl.atomic_xchg(COUNT, 1)
-    else:
-        partial_dg += tl.load(DG, mask=mask)
-        partial_db += tl.load(DB, mask=mask)
+        # No accumulation in first store
+        if count == 0:
+            tl.atomic_xchg(COUNT, 1)
+        else:
+            partial_dg += tl.load(DG_block, mask=mask)
+            partial_db += tl.load(DB_block, mask=mask)
 
-    tl.store(DG, partial_dg, mask=mask)
-    tl.store(DB, partial_db, mask=mask)
+        tl.store(DG_block, partial_dg, mask=mask)
+        tl.store(DB_block, partial_db, mask=mask)
 
-    # barrier to ensure all threads finished before releasing lock
-    tl.debug_barrier()
+        # barrier to ensure all threads finished before releasing lock
+        tl.debug_barrier()
 
-    # Release lock
-    tl.atomic_xchg(LOCK, 0)
+        # Release lock
+        tl.atomic_xchg(LOCK, 0)
 
 @triton.jit
 def layer_norm_bwd_kernel_dgdb(
@@ -167,9 +190,9 @@ class LayerNorm(torch.autograd.Function):
         MAX_SIZE = 65536 // x.element_size()
         BLOCK_SIZE = min(MAX_SIZE, triton.next_power_of_2(N))
 
-        # Otherwise deviation from torch.nn.functional.layer_norm is too high
-        if N > BLOCK_SIZE:
-            raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
+        # New implementation loops over the feature dimension to support feature dim >= 64KB as well
+        # if N > BLOCK_SIZE:
+        #     raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
 
         # Heuristics for number of warps
         num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
@@ -317,15 +340,15 @@ def make_benchmark(bench_type, mode):
     return bench
 
 if __name__ == "__main__":
-    test_layer_norm(1151, 16383, torch.float32, mode="both")
-    test_layer_norm(1151, 16384, torch.float32, mode="both")
+    test_layer_norm(1151, 65536, torch.float32, mode="both")
+    test_layer_norm(1151, 65535, torch.float32, mode="both")
 
-    bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
-    bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
-    bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
-    bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
+    # bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
+    # bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
+    # bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
+    # bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
 
-    bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
