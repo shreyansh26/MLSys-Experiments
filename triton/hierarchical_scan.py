@@ -34,13 +34,13 @@ def cumsum_block(x, y, K):
     seqlen = y.shape[0]
     BLOCKS = seqlen // K
     h = torch.zeros(2, BLOCKS).float().cuda()
+
     cumsum_kernel[(BLOCKS,)](x, h[0], y, K)
 
     # Store cumulative sums of previous blocks
-    # print(h[0])
     h[1, 1:] = h[0].cumsum(dim=0)[:-1]
-    # print(h[1])
 
+    # Add all the past blocks' cumulative sums to the current block
     cumsum_kernel[(BLOCKS,)](x, h[1], y, K)
 
 K = 16
@@ -78,4 +78,3 @@ print(f"Triton time: {(min(times)/1000)*1000:.3f}ms")
 
 times = timeit.Timer(partial(torch.cumsum, x_large, 0)).repeat(3, 1000)
 print(f"Torch time: {(min(times)/1000)*1000:.3f}ms")
-      
