@@ -54,13 +54,13 @@ def layer_norm_fwd_kernel(
 
 @triton.jit
 def layer_norm_bwd_kernel_dx(
-    DX, DY,
-    DG, DB,
-    X,
-    G, B,
-    M, RS,
-    N, stride,
-    LOCK,
+    DX, DY,         # input and output gradient pointers
+    DG, DB,         # partial sums of dgamma and dbias
+    X,              # input data pointer
+    G, B,           # gamma and beta pointers
+    M, RS,          # mean and rstd (1/std) pointers
+    N, stride,      # sequence length (column size) and stride
+    LOCK,           # lock pointer
     GROUP_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr):
     
@@ -125,9 +125,9 @@ def layer_norm_bwd_kernel_dx(
 
 @triton.jit
 def layer_norm_bwd_kernel_dgdb(
-    DG_partial, DB_partial,
-    DG, DB,
-    M, N,
+    DG_partial, DB_partial,     # partial sums of dgamma and dbias
+    DG, DB,                     # final output pointers to dgamma and dbias
+    M, N,                       # M here is GROUP_SIZE_M
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr):
     
@@ -159,8 +159,9 @@ class LayerNorm(torch.autograd.Function):
         x_inp = x.reshape(-1, x.shape[-1])
         M, N = x_inp.shape
 
-        mean = torch.empty(M, dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
-        rstd = torch.empty(M, dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
+        # Allocate memory
+        mean = torch.empty((M,), dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
+        rstd = torch.empty((M,), dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
 
         # Less than 64KB per feature: enqueue kernel
         MAX_SIZE = 65536 // x.element_size()
@@ -181,8 +182,35 @@ class LayerNorm(torch.autograd.Function):
         return y
     
     @staticmethod
-    def backward(ctx, grad_output):
-        raise NotImplementedError("Backward pass is not implemented")        
+    def backward(ctx, dy):
+        x, gamma, bias, mean, rstd = ctx.saved_tensors
+
+        # Heuristics
+        N = gamma.shape[0]
+        GROUP_SIZE_M = 64
+        if N <= 8192: GROUP_SIZE_M = 96
+        if N <= 4096: GROUP_SIZE_M = 128
+        if N <= 1024: GROUP_SIZE_M = 256
+
+        # Allocate memory
+        locks = torch.zeros(2 * GROUP_SIZE_M, dtype=torch.int32, device=gamma.device)
+        _dgamma = torch.zeros((GROUP_SIZE_M, N), dtype=gamma.dtype, device=gamma.device)
+        _dbias = torch.zeros((GROUP_SIZE_M, N), dtype=bias.dtype, device=bias.device)
+        dgamma = torch.empty((N,), dtype=gamma.dtype, device=gamma.device)
+        dbeta = torch.empty((N,), dtype=bias.dtype, device=bias.device)
+        dx = torch.empty_like(dy)
+
+        # reshape input data into 2D tensor
+        x_inp = x.reshape(-1, x.shape[-1])
+        M, N = x_inp.shape
+
+        # call kernel
+        layer_norm_bwd_kernel_dx[(M,)](dx, dy, _dgamma, _dbias, x_inp, gamma, bias, mean, rstd, N, x_inp.stride(0), locks, GROUP_SIZE_M=GROUP_SIZE_M, BLOCK_SIZE_N=ctx.BLOCK_SIZE, num_warps=ctx.num_warps)
+
+        grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )
+        layer_norm_bwd_kernel_dgdb[grid](_dgamma, _dbias, dgamma, dbeta, min(GROUP_SIZE_M, M), N, BLOCK_SIZE_M=32, BLOCK_SIZE_N=128)
+
+        return dx, None, dgamma, dbeta, None        
 
 def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
     layer_norm = LayerNorm.apply
@@ -191,12 +219,28 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
     gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
     bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
-    y = layer_norm(x, w_shape, gamma, bias, eps)
+    dy = 0.1 * torch.randn_like(x)
 
+    x.requires_grad_(True)
+
+    y = layer_norm(x, w_shape, gamma, bias, eps)
     y_ref = torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
     print(y)
     print(y_ref)
     assert torch.allclose(y, y_ref, atol=1e-5, rtol=1e-5)
+
+    
+    y.backward(dy, retain_graph=True)
+    dx, dg, db = [_.grad.clone() for _ in [x, gamma, bias]]
+
+    x.grad, gamma.grad, bias.grad = None, None, None
+
+    y_ref.backward(dy, retain_graph=True)
+    dx_ref, dg_ref, db_ref = [_.grad.clone() for _ in [x, gamma, bias]]
+
+    assert torch.allclose(dx, dx_ref, atol=1e-5, rtol=1e-5)
+    assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
+    assert torch.allclose(db, db_ref, atol=1e-5, rtol=1e-5)
 
 @triton.testing.perf_report(
     triton.testing.Benchmark(
@@ -274,5 +318,5 @@ def bench_layer_norm_latency(M, N, dtype, provider, mode='forward', eps=1e-5, de
 
 if __name__ == "__main__":
     test_layer_norm(1151, 8192, torch.float32)
-    bench_layer_norm_flops.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_latency.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_flops.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_latency.run(save_path='plots/layer_norm', print_data=True)
