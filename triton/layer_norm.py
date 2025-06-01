@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 @triton.jit
-def layer_norm_kernel(
+def layer_norm_fwd_kernel(
     X, Y,              # input and output pointers
     N, stride,         # sequence length (column size) and stride
     G, B,              # gamma and beta pointers
@@ -51,24 +51,129 @@ def layer_norm_kernel(
         b = tl.load(B + cols, mask=mask, other=0).to(tl.float32)
         y = y * g + b
         tl.store(Y + cols, y, mask=mask)
+
+class LayerNorm(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, normalized_shape, gamma, bias, eps=1e-5): # Keep args same as torch.nn.functional.layer_norm
+        y = torch.empty_like(x)
+        # reshape input data into 2D tensor
+        x_inp = x.reshape(-1, x.shape[-1])
+        M, N = x_inp.shape
+
+        mean = torch.empty(M, dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
+        rstd = torch.empty(M, dtype=torch.float32, device=x.device) # Mean and rstd are stored in float32
+
+        # Less than 64KB per feature: enqueue kernel
+        MAX_SIZE = 65536 // x.element_size()
+        BLOCK_SIZE = min(MAX_SIZE, triton.next_power_of_2(N))
+
+        if N > BLOCK_SIZE:
+            raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
+
+        # Heuristics for number of warps
+        num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
+
+        # call kernel
+        layer_norm_fwd_kernel[(M,)](x_inp, y, N, x_inp.stride(0), gamma, bias, mean, rstd, eps, BLOCK_SIZE, num_warps=num_warps)
+        ctx.save_for_backward(x, gamma, bias, mean, rstd)
+        ctx.BLOCK_SIZE = BLOCK_SIZE
+        ctx.num_warps = num_warps
+        ctx.eps = eps
+        return y
     
+    @staticmethod
+    def backward(ctx, grad_output):
+        raise NotImplementedError("Backward pass is not implemented")        
+
+def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
+    layer_norm = LayerNorm.apply
+    x_shape = (M, N)
+    w_shape = (x_shape[-1],)
+    gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
+    y = layer_norm(x, w_shape, gamma, bias, eps)
+
+    y_ref = torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
+    print(y)
+    print(y_ref)
+    assert torch.allclose(y, y_ref, atol=1e-5, rtol=1e-5)
+
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=['N'],
+        x_vals=[512 * i for i in range(2, 32)],
+        line_arg='provider',
+        line_vals=['triton', 'torch'],
+        line_names=['Triton', 'Torch'],
+        styles=[('blue', '-'), ('green', '-')],
+        ylabel='GB/s',
+        plot_name='layer-norm-forward-flops',
+        args={'M': 4096, 'dtype': torch.float16, 'mode': 'forward'},
+    ))
+def bench_layer_norm_flops(M, N, dtype, provider, mode='forward', eps=1e-5, device="cuda"):
+    # create data
+    x_shape = (M, N)
+    w_shape = (x_shape[-1],)
+    gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
+    quantiles = [0.5, 0.2, 0.8]
+
+    layer_norm = LayerNorm.apply
+
+    def y_fwd():
+        if provider == "triton":
+            return layer_norm(x, w_shape, gamma, bias, eps)
+
+        if provider == "torch":
+            return torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
+
+    # forward pass
+    if mode == 'forward':
+        gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
+        ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
     
-def layer_norm(X, G, B, M, RS, eps=1e-5, BLOCK_SIZE=1024):
-    N = X.shape[0]
-    Y = torch.empty_like(X)
-    layer_norm_kernel[(N,)](X, Y, N, X.stride(0), G, B, M, RS, eps, BLOCK_SIZE)
-    return Y
+    return gbps(ms), gbps(max_ms), gbps(min_ms)
 
-X = torch.randn(1024, 1024).cuda()
-G = torch.randn(1024).cuda()
-B = torch.randn(1024).cuda()
-M = torch.zeros(1024).cuda()
-RS = torch.zeros(1024).cuda()
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=['N'],
+        x_vals=[512 * i for i in range(2, 32)],
+        line_arg='provider',
+        line_vals=['triton', 'torch'],
+        line_names=['Triton', 'Torch'],
+        styles=[('blue', '-'), ('green', '-')],
+        ylabel='GB/s',
+        plot_name='layer-norm-forward-latency',
+        args={'M': 4096, 'dtype': torch.float16, 'mode': 'forward'},
+    ))
+def bench_layer_norm_latency(M, N, dtype, provider, mode='forward', eps=1e-5, device="cuda"):
+    # create data
+    x_shape = (M, N)
+    w_shape = (x_shape[-1],)
+    gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
+    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
+    quantiles = [0.5, 0.2, 0.8]
 
-Y = layer_norm(X, G, B, M, RS, 1e-5)
-Y_actual = F.layer_norm(X, (1024,), weight=G, bias=B, eps=1e-5)
+    layer_norm = LayerNorm.apply
 
-print(Y)
-print(Y_actual)
+    def y_fwd():
+        if provider == "triton":
+            return layer_norm(x, w_shape, gamma, bias, eps)
 
-assert torch.allclose(Y, Y_actual, atol=1e-5, rtol=1e-5)
+        if provider == "torch":
+            return torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
+
+    # forward pass
+    if mode == 'forward':
+        gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
+        ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
+    
+    return ms, min_ms, max_ms
+
+if __name__ == "__main__":
+    test_layer_norm(1151, 8192, torch.float32)
+    bench_layer_norm_flops.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_latency.run(save_path='plots/layer_norm', print_data=True)
