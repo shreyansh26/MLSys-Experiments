@@ -242,81 +242,77 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
     assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(db, db_ref, atol=1e-5, rtol=1e-5)
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
-        x_names=['N'],
-        x_vals=[512 * i for i in range(2, 32)],
-        line_arg='provider',
-        line_vals=['triton', 'torch'],
-        line_names=['Triton', 'Torch'],
-        styles=[('blue', '-'), ('green', '-')],
-        ylabel='GB/s',
-        plot_name='layer-norm-forward-flops',
-        args={'M': 4096, 'dtype': torch.float16, 'mode': 'forward'},
-    ))
-def bench_layer_norm_flops(M, N, dtype, provider, mode='forward', eps=1e-5, device="cuda"):
-    # create data
+# Insert dynamic perf report decorator factory
+def create_perf_report(mode, bench_type):
+    plot_name = f"layer-norm-{mode}-{bench_type}"
+    return triton.testing.perf_report(
+        triton.testing.Benchmark(
+            x_names=['N'],
+            x_vals=[512 * i for i in range(2, 32)],
+            line_arg='provider',
+            line_vals=['triton', 'torch'],
+            line_names=['Triton', 'Torch'],
+            styles=[('blue', '-'), ('green', '-')],
+            ylabel='GB/s',
+            plot_name=plot_name,
+            args={'M': 4096, 'dtype': torch.float16, 'mode': mode},
+        ))
+
+# Insert generic benchmark function and factory for creating benchmark variants
+
+def bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps=1e-5, device="cuda"):
     x_shape = (M, N)
     w_shape = (x_shape[-1],)
     gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
     bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
+    dy = 0.1 * torch.randn_like(x)
+    x.requires_grad_(True)
     quantiles = [0.5, 0.2, 0.8]
-
     layer_norm = LayerNorm.apply
 
     def y_fwd():
         if provider == "triton":
             return layer_norm(x, w_shape, gamma, bias, eps)
-
-        if provider == "torch":
+        elif provider == "torch":
             return torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
 
-    # forward pass
-    if mode == 'forward':
-        gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
-        ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
-    
-    return gbps(ms), gbps(max_ms), gbps(min_ms)
+    if bench_type == "flops":
+        if mode == "forward":
+            gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
+            ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
+            return gbps(ms), gbps(max_ms), gbps(min_ms)
+        elif mode == "backward":
+            y = y_fwd()
+            gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
+            # Note: directly calling backward on the result of y_fwd()
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: y.backward(dy, retain_graph=True), quantiles=quantiles, grad_to_none=[x], rep=500)
+            return gbps(ms), gbps(max_ms), gbps(min_ms)
+    elif bench_type == "latency":
+        if mode == "forward":
+            ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
+            return ms, min_ms, max_ms
+        elif mode == "backward":
+            y = y_fwd()
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: y.backward(dy, retain_graph=True), quantiles=quantiles, grad_to_none=[x], rep=500)
+            return ms, min_ms, max_ms
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
-        x_names=['N'],
-        x_vals=[512 * i for i in range(2, 32)],
-        line_arg='provider',
-        line_vals=['triton', 'torch'],
-        line_names=['Triton', 'Torch'],
-        styles=[('blue', '-'), ('green', '-')],
-        ylabel='GB/s',
-        plot_name='layer-norm-forward-latency',
-        args={'M': 4096, 'dtype': torch.float16, 'mode': 'forward'},
-    ))
-def bench_layer_norm_latency(M, N, dtype, provider, mode='forward', eps=1e-5, device="cuda"):
-    # create data
-    x_shape = (M, N)
-    w_shape = (x_shape[-1],)
-    gamma = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
-    bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=True)
-    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
-    quantiles = [0.5, 0.2, 0.8]
 
-    layer_norm = LayerNorm.apply
-
-    def y_fwd():
-        if provider == "triton":
-            return layer_norm(x, w_shape, gamma, bias, eps)
-
-        if provider == "torch":
-            return torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
-
-    # forward pass
-    if mode == 'forward':
-        gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
-        ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
-    
-    return ms, min_ms, max_ms
+def make_benchmark(bench_type, mode):
+    @create_perf_report(mode, bench_type)
+    def bench(M, N, dtype, provider, eps=1e-5, device="cuda", **kwargs):
+        return bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps, device)
+    return bench
 
 if __name__ == "__main__":
     test_layer_norm(1151, 8192, torch.float32)
-    # bench_layer_norm_flops.run(save_path='plots/layer_norm', print_data=True)
-    # bench_layer_norm_latency.run(save_path='plots/layer_norm', print_data=True)
+
+    bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
+    bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
+    bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
+    bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
+    # Example calls: Uncomment the following lines to run the benchmarks
+    bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
