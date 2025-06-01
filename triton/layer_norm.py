@@ -230,6 +230,7 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda", mode="both"):
     print(y.shape)
     print(y_ref)
     print(y_ref.shape)
+    # Use higher tolerance for float16 - 1e-2, 0
     assert torch.allclose(y, y_ref, atol=1e-5, rtol=1e-5)
 
     if mode == "forward":
@@ -248,6 +249,7 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda", mode="both"):
     print(dx_ref)
     print(dx_ref.shape)
 
+    # Use higher tolerance for float16 - 1e-2, 0
     assert torch.allclose(dx, dx_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(db, db_ref, atol=1e-5, rtol=1e-5)
