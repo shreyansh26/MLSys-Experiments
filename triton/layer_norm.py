@@ -167,6 +167,7 @@ class LayerNorm(torch.autograd.Function):
         MAX_SIZE = 65536 // x.element_size()
         BLOCK_SIZE = min(MAX_SIZE, triton.next_power_of_2(N))
 
+        # Otherwise deviation from torch.nn.functional.layer_norm is too high
         if N > BLOCK_SIZE:
             raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
 
@@ -212,7 +213,7 @@ class LayerNorm(torch.autograd.Function):
 
         return dx, None, dgamma, dbeta, None        
 
-def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
+def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda", mode="both"):
     layer_norm = LayerNorm.apply
     x_shape = (M, N)
     w_shape = (x_shape[-1],)
@@ -226,9 +227,13 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
     y = layer_norm(x, w_shape, gamma, bias, eps)
     y_ref = torch.nn.functional.layer_norm(x, w_shape, gamma, bias, eps)
     print(y)
+    print(y.shape)
     print(y_ref)
+    print(y_ref.shape)
     assert torch.allclose(y, y_ref, atol=1e-5, rtol=1e-5)
 
+    if mode == "forward":
+        return
     
     y.backward(dy, retain_graph=True)
     dx, dg, db = [_.grad.clone() for _ in [x, gamma, bias]]
@@ -237,6 +242,11 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):
 
     y_ref.backward(dy, retain_graph=True)
     dx_ref, dg_ref, db_ref = [_.grad.clone() for _ in [x, gamma, bias]]
+
+    print(dx)
+    print(dx.shape)
+    print(dx_ref)
+    print(dx_ref.shape)
 
     assert torch.allclose(dx, dx_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
@@ -305,14 +315,15 @@ def make_benchmark(bench_type, mode):
     return bench
 
 if __name__ == "__main__":
-    test_layer_norm(1151, 8192, torch.float32)
+    test_layer_norm(1151, 16383, torch.float32, mode="both")
+    test_layer_norm(1151, 16384, torch.float32, mode="both")
 
-    bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
-    bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
-    bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
-    bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
-    # Example calls: Uncomment the following lines to run the benchmarks
-    bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
-    bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
+    # bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
+    # bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
+    # bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
+
+    # bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
+    # bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
