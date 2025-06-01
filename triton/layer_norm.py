@@ -283,7 +283,7 @@ def create_perf_report(mode, bench_type):
     return triton.testing.perf_report(
         triton.testing.Benchmark(
             x_names=['N'],
-            x_vals=[512 * i for i in range(2, 32)],
+            x_vals=[512 * i for i in range(2, 128)], # till 65k feature length
             line_arg='provider',
             line_vals=['triton', 'torch'],
             line_names=['Triton', 'Torch'],
@@ -340,15 +340,15 @@ def make_benchmark(bench_type, mode):
     return bench
 
 if __name__ == "__main__":
-    test_layer_norm(1151, 65536, torch.float32, mode="both")
-    test_layer_norm(1151, 65535, torch.float32, mode="both")
+    test_layer_norm(1151, 131072, torch.float32, mode="both")
+    test_layer_norm(1151, 131071, torch.float32, mode="both")
 
-    # bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
-    # bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
-    # bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
-    # bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
+    bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
+    bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
+    bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
+    bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
 
-    # bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
-    # bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
-    # bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
-    # bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_latency_forward.run(save_path='plots/layer_norm', print_data=True)
+    bench_layer_norm_latency_backward.run(save_path='plots/layer_norm', print_data=True)
