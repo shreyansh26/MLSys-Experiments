@@ -276,7 +276,6 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda", mode="both"):
     assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(db, db_ref, atol=1e-5, rtol=1e-5)
 
-# Insert dynamic perf report decorator factory
 def create_perf_report(mode, bench_type):
     plot_name = f"layer-norm-{mode}-{bench_type}"
     return triton.testing.perf_report(
@@ -317,7 +316,6 @@ def bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps=1e-5, 
         elif mode == "backward":
             y = y_fwd()
             gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
-            # Note: directly calling backward on the result of y_fwd()
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: y.backward(dy, retain_graph=True), quantiles=quantiles, grad_to_none=[x], rep=500)
             return gbps(ms), gbps(max_ms), gbps(min_ms)
     elif bench_type == "latency":
