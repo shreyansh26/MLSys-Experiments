@@ -3,10 +3,15 @@ import torch
 import triton
 import triton.language as tl
 
+from typing import Optional
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def is_cuda():
     return triton.runtime.driver.active.get_current_target().backend == "cuda"
+
+def supports_tma():
+    return is_cuda() and torch.cuda.get_device_capability()[0] >= 9
 
 def num_sms():
     if is_cuda():
@@ -149,7 +154,107 @@ def grouped_matmul_kernel(
         # go to the next GEMM
         last_problem_end += num_tiles
 
-def group_gemm_fn(group_A, group_B):
+tma_configs = [
+    triton.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, 'BLOCK_SIZE_K' : BK}, num_stages=s, num_warps=w) \
+    for BM in [128]\
+    for BN in [128, 256]\
+    for BK in [64, 128]\
+    for s in ([3, 4])\
+    for w in [4, 8]\
+]
+
+
+@triton.autotune(
+    tma_configs,
+    key=['group_a_ptrs', 'group_b_ptrs', 'gropup_c_ptrs', 'group_size'],
+)
+@triton.jit
+def grouped_matmul_tma_kernel(
+    group_a_ptrs,               # shape: [group_size], each entry is a pointer to to a group of A (A_i)
+    group_b_ptrs,               # shape: [group_size], each entry is a pointer to to a group of B (B_i)
+    group_c_ptrs,               # shape: [group_size], each entry is a pointer to to a group of C (C_i)
+    group_gemm_sizes,           # shape: [group_size * 3], each entry is the size of the gemm operation (M_i, N_i, K_i) for each i (group_i)
+    group_strides,              # shape: [group_size * 3], each entry is the stride of the gemm operation (stride_a_i, stride_b_i, stride_c_i) for each i (group_i)
+    group_size,                 # number of gemm operations
+    NUM_SM: tl.constexpr,       # number of sms to use (CTAs to launch)
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    FP8: tl.constexpr,
+):
+    dtype = tl.float8e4nv if FP8 else tl.float16
+    tile_idx = tl.program_id(0)
+    last_problem_end = 0
+
+    for g in range(group_size):
+        # get gemm size for group g
+        gm = tl.load(group_gemm_sizes + g * 3 + 0)
+        gn = tl.load(group_gemm_sizes + g * 3 + 1)
+        gk = tl.load(group_gemm_sizes + g * 3 + 2)
+
+        num_m_tiles = tl.cdiv(gm, BLOCK_SIZE_M)
+        num_n_tiles = tl.cdiv(gn, BLOCK_SIZE_N)
+        num_tiles = num_m_tiles * num_n_tiles
+
+        if tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+            # pick up a tile for current GEMM (group g)
+            stride_a = tl.load(group_strides + g * 3 + 0)
+            stride_b = tl.load(group_strides + g * 3 + 1)
+            stride_c = tl.load(group_strides + g * 3 + 2)
+
+            # get pointers for group g
+            a_ptr = tl.load(group_a_ptrs + g).to(tl.pointer_type(dtype))
+            b_ptr = tl.load(group_b_ptrs + g).to(tl.pointer_type(dtype))
+            c_ptr = tl.load(group_c_ptrs + g).to(tl.pointer_type(dtype))
+
+            a_desc = tl.make_tensor_descriptor(
+                a_ptr,
+                shape=[gm, gk],
+                strides=[stride_a, 1],
+                block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_K],
+            )
+
+            b_desc = tl.make_tensor_descriptor(
+                b_ptr,
+                shape=[gn, gk],
+                strides=[stride_b, 1],
+                block_shape=[BLOCK_SIZE_N, BLOCK_SIZE_K],
+            )
+            c_desc = tl.make_tensor_descriptor(
+                c_ptr,
+                shape=[gm, gn],
+                strides=[stride_c, 1],
+                block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N],
+            )
+
+            while tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+                # tile coordinates
+                tile_idx_in_gemm = tile_idx - last_problem_end
+                m_tile_idx = tile_idx_in_gemm // num_n_tiles
+                n_tile_idx = tile_idx_in_gemm % num_n_tiles
+
+                # compute GEMM
+                offset_am = m_tile_idx * BLOCK_SIZE_M
+                offset_bn = n_tile_idx * BLOCK_SIZE_N
+
+                accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=dtype)
+
+                for kk in range(0, tl.cdiv(gk, BLOCK_SIZE_K)):
+                    a = a_desc.load([offset_am, kk * BLOCK_SIZE_K])
+                    b = b_desc.load([kk * BLOCK_SIZE_K, offset_bn])
+                    accumulator += tl.dot(a, b)
+                
+                offset_cm = m_tile_idx * BLOCK_SIZE_M
+                offset_cn = n_tile_idx * BLOCK_SIZE_N
+
+                c = accumulator.to(dtype)
+                c_desc.store([offset_cm, offset_cn], c)
+
+                tile_idx += NUM_SM
+
+        last_problem_end += num_tiles
+        
+def group_gemm_fn(group_A, group_B, use_tma=False):
     assert len(group_A) == len(group_B)
     group_size = len(group_A)
 
@@ -162,9 +267,16 @@ def group_gemm_fn(group_A, group_B):
     for i in range(group_size):
         A = group_A[i]
         B = group_B[i]
-        assert A.shape[1] == B.shape[0]
-        M, K = A.shape
-        K, N = B.shape
+
+        if use_tma:
+            assert A.shape[1] == B.shape[1]
+            M, K = A.shape
+            N, K = B.shape
+        else:
+            assert A.shape[1] == B.shape[0]
+            M, K = A.shape
+            K, N = B.shape
+        
         C = torch.empty((M, N), device=DEVICE, dtype=A.dtype)
         group_C.append(C)
         A_addrs.append(A.data_ptr())
@@ -179,16 +291,36 @@ def group_gemm_fn(group_A, group_B):
     d_c_ptrs = torch.tensor(C_addrs, device=DEVICE)
     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
     d_g_strides = torch.tensor(g_strides, dtype=torch.int32, device=DEVICE)
-    # we use a fixed number of CTA, and it's auto-tunable
-    grid = lambda META: (META['NUM_SM'], )
-    grouped_matmul_kernel[grid](
-        d_a_ptrs,
-        d_b_ptrs,
-        d_c_ptrs,
-        d_g_sizes,
-        d_g_strides,
-        group_size,
-    )
+
+    if use_tma:
+        # TMA descriptors require a global memory allocation
+        def alloc_fn(size: int, alignment: int, stream: Optional[int]):
+            return torch.empty(size, device="cuda", dtype=torch.int8)
+    
+        triton.set_allocator(alloc_fn)
+
+        # we use a fixed number of CTA, and it's auto-tunable
+        grid = lambda META: (META['NUM_SM'], )
+        grouped_matmul_tma_kernel[grid](
+            d_a_ptrs, 
+            d_b_ptrs, 
+            d_c_ptrs, 
+            d_g_sizes, 
+            d_g_strides, 
+            group_size, 
+            FP8=torch.float8_e4m3fn == group_A[0].dtype, 
+            NUM_SM=num_sms())
+    else:
+        # we use a fixed number of CTA, and it's auto-tunable
+        grid = lambda META: (META['NUM_SM'], )
+        grouped_matmul_kernel[grid](
+            d_a_ptrs,
+            d_b_ptrs,
+            d_c_ptrs,
+            d_g_sizes,
+            d_g_strides,
+            group_size,
+        )
 
     # Since we are modifying the data pointers of each C, group_C now has the updated C tensors
     return group_C
