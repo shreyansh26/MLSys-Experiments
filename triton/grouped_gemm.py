@@ -13,6 +13,48 @@ def num_sms():
         return torch.cuda.get_device_properties("cuda").multi_processor_count
     return 148
 
+
+@triton.autotune(
+    configs=[
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 84,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 128,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 84,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 128,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 64,
+            'NUM_SM': num_sms(),
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 64,
+            'NUM_SM': num_sms(),
+        }),
+    ],
+    key=['group_size'],
+)
 @triton.jit
 def grouped_matmul_kernel(
     group_a_ptrs,               # shape: [group_size], each entry is a pointer to to a group of A (A_i)
@@ -94,4 +136,79 @@ def grouped_matmul_kernel(
             tile_idx += NUM_SM
 
         # go to the next GEMM
-        last_problem_end += num_tiles       
+        last_problem_end += num_tiles
+
+def group_gemm_fn(group_A, group_B):
+    assert len(group_A) == len(group_B)
+    group_size = len(group_A)
+
+    A_addrs = []
+    B_addrs = []
+    C_addrs = []
+    g_sizes = []
+    g_strides = []
+    group_C = []
+    for i in range(group_size):
+        A = group_A[i]
+        B = group_B[i]
+        assert A.shape[1] == B.shape[0]
+        M, K = A.shape
+        K, N = B.shape
+        C = torch.empty((M, N), device=DEVICE, dtype=A.dtype)
+        group_C.append(C)
+        A_addrs.append(A.data_ptr())
+        B_addrs.append(B.data_ptr())
+        C_addrs.append(C.data_ptr())
+        g_sizes += [M, N, K]
+        g_strides += [A.stride(0), B.stride(0), C.stride(0)]
+
+    # note these are device tensors
+    d_a_ptrs = torch.tensor(A_addrs, device=DEVICE)
+    d_b_ptrs = torch.tensor(B_addrs, device=DEVICE)
+    d_c_ptrs = torch.tensor(C_addrs, device=DEVICE)
+    d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
+    d_g_strides = torch.tensor(g_strides, dtype=torch.int32, device=DEVICE)
+    # we use a fixed number of CTA, and it's auto-tunable
+    grid = lambda META: (META['NUM_SM'], )
+    grouped_matmul_kernel[grid](
+        d_a_ptrs,
+        d_b_ptrs,
+        d_c_ptrs,
+        d_g_sizes,
+        d_g_strides,
+        group_size,
+    )
+
+    # Since we are modifying the data pointers of each C, group_C now has the updated C tensors
+    return group_C
+
+if __name__ == "__main__":
+    # Data preparation
+    group_m = [1024, 512, 256, 128]
+    group_n = [1024, 512, 256, 128]
+    group_k = [1024, 512, 256, 128]
+    group_A = []
+    group_B = []
+    group_B_T = []
+    assert len(group_m) == len(group_n)
+    assert len(group_n) == len(group_k)
+    group_size = len(group_m)
+    for i in range(group_size):
+        M = group_m[i]
+        N = group_n[i]
+        K = group_k[i]
+        A = torch.rand((M, K), device=DEVICE, dtype=torch.float16)
+        B = torch.rand((K, N), device=DEVICE, dtype=torch.float16)
+        B_T = B.T.contiguous()
+        group_A.append(A)
+        group_B.append(B)
+        group_B_T.append(B_T)
+
+    # Calculate the output of the group gemm using Triton
+    out_triton = group_gemm_fn(group_A, group_B)
+    # Calculate the output of the group gemm using torch
+    out_ref = [torch.matmul(a, b) for a, b in zip(group_A, group_B)]
+    # Check if the output of the group gemm using Triton is the same as the output of the group gemm using torch
+    for i in range(group_size):
+        assert torch.allclose(out_ref[i], out_triton[i], atol=1e-2, rtol=1e-2)
+        print(f"✅ Group {i} passed")
