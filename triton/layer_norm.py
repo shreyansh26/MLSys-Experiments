@@ -276,7 +276,7 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda", mode="both"):
     assert torch.allclose(dg, dg_ref, atol=1e-5, rtol=1e-5)
     assert torch.allclose(db, db_ref, atol=1e-5, rtol=1e-5)
 
-def create_perf_report(mode, bench_type):
+def create_perf_report(mode, bench_type, y_label="GB/s"):
     plot_name = f"layer-norm-{mode}-{bench_type}"
     return triton.testing.perf_report(
         triton.testing.Benchmark(
@@ -286,7 +286,7 @@ def create_perf_report(mode, bench_type):
             line_vals=['triton', 'torch'],
             line_names=['Triton', 'Torch'],
             styles=[('blue', '-'), ('green', '-')],
-            ylabel='GB/s',
+            ylabel=y_label,
             plot_name=plot_name,
             args={'M': 4096, 'dtype': torch.float16, 'mode': mode},
         ))
@@ -328,8 +328,8 @@ def bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps=1e-5, 
             return ms, min_ms, max_ms
 
 
-def make_benchmark(bench_type, mode):
-    @create_perf_report(mode, bench_type)
+def make_benchmark(bench_type, mode, y_label="GB/s"):
+    @create_perf_report(mode, bench_type, y_label)
     def bench(M, N, dtype, provider, eps=1e-5, device="cuda", **kwargs):
         return bench_layer_norm_generic(M, N, dtype, provider, mode, bench_type, eps, device)
     return bench
@@ -338,10 +338,10 @@ if __name__ == "__main__":
     test_layer_norm(1151, 131072, torch.float32, mode="both")
     test_layer_norm(1151, 131071, torch.float32, mode="both")
 
-    bench_layer_norm_flops_forward = make_benchmark("flops", "forward")
-    bench_layer_norm_flops_backward = make_benchmark("flops", "backward")
-    bench_layer_norm_latency_forward = make_benchmark("latency", "forward")
-    bench_layer_norm_latency_backward = make_benchmark("latency", "backward")
+    bench_layer_norm_flops_forward = make_benchmark("flops", "forward", y_label="GBs/s")
+    bench_layer_norm_flops_backward = make_benchmark("flops", "backward", y_label="GBs/s")
+    bench_layer_norm_latency_forward = make_benchmark("latency", "forward", y_label="ms")
+    bench_layer_norm_latency_backward = make_benchmark("latency", "backward", y_label="ms")
 
     bench_layer_norm_flops_forward.run(save_path='plots/layer_norm', print_data=True)
     bench_layer_norm_flops_backward.run(save_path='plots/layer_norm', print_data=True)
