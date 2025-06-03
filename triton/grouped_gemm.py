@@ -115,9 +115,14 @@ def grouped_matmul_kernel(
                 tl.multiple_of(a_ptrs, [16, 16])
                 tl.multiple_of(b_ptrs, [16, 16])
 
+                # Calculate the current K offset for masking
+                k_offset = kk * BLOCK_SIZE_K
+
                 # load tile
-                a = tl.load(a_ptrs, mask=(offset_am[:, None] < gm) & (offset_k[None, :] < gk), other=0.0)
-                b = tl.load(b_ptrs, mask=(offset_k[:, None] < gk) & (offset_bn[None, :] < gn), other=0.0)
+                a = tl.load(a_ptrs, mask=(offset_am[:, None] < gm) & (k_offset + offset_k[None, :] < gk), other=0.0)
+                b = tl.load(b_ptrs, mask=(k_offset + offset_k[:, None] < gk) & (offset_bn[None, :] < gn), other=0.0)
+                # a = tl.load(a_ptrs)
+                # b = tl.load(b_ptrs)
 
                 accumulator += tl.dot(a, b)
                 a_ptrs += BLOCK_SIZE_K
@@ -130,7 +135,7 @@ def grouped_matmul_kernel(
 
             c_ptrs = c_ptr + offset_cm[:, None] * stride_c + offset_cn[None, :]
 
-            tl.store(c_ptrs, c)
+            tl.store(c_ptrs, c, mask=(offset_cm[:, None] < gm) & (offset_cn[None, :] < gn))
 
             # go to the next tile - somewhat like grid-stride loop
             tile_idx += NUM_SM
@@ -266,7 +271,6 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
 def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None, K=None):
     @create_perf_report(mode, bench_type, x_name, y_label)
     def bench(provider, **kwargs):
-        print(f' Kwargs: {kwargs}' )
         if mode == "square":
             M = kwargs['N']            
             N = kwargs['N']
@@ -281,9 +285,9 @@ def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None,
 
 if __name__ == "__main__":
     # Data preparation
-    group_m = [1024, 512, 256, 128]
-    group_n = [1024, 512, 256, 128]
-    group_k = [1024, 512, 256, 128]
+    group_m = [1024, 512, 256, 128, 1024 + 13]
+    group_n = [1024, 512, 256, 128, 1024 + 13]
+    group_k = [1024, 512, 256, 128, 1024 + 13]
     group_A = []
     group_B = []
     assert len(group_m) == len(group_n)
