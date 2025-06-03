@@ -333,9 +333,9 @@ def create_perf_report(mode, bench_type, x_name="N", y_label="GB/s"):
             x_names=[x_name],
             x_vals=[2**i for i in range(7, 11)],
             line_arg='provider',
-            line_vals=['triton', 'torch'],
-            line_names=['Triton', 'Torch'],
-            styles=[('blue', '-'), ('green', '-')],
+            line_vals=['triton', 'torch'] + (['triton-tma'] if supports_tma() else []),
+            line_names=['Triton', 'Torch'] + (['Triton-TMA'] if supports_tma() else []),
+            styles=[('blue', '-'), ('green', '-')] + ([('red', '-')] if supports_tma() else []),
             ylabel=y_label,
             plot_name=plot_name,
             args={'mode': mode},
@@ -345,8 +345,10 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
     group_size = 4
     group_A = []
     group_B = []
+    group_B_T = []
     A_addrs = []
     B_addrs = []
+    B_T_addrs = []
     C_addrs = []
     g_sizes = []
     g_lds = []
@@ -355,17 +357,21 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
         A = torch.rand((M, K), device=DEVICE, dtype=torch.float16)
         B = torch.rand((K, N), device=DEVICE, dtype=torch.float16)
         C = torch.empty((M, N), device=DEVICE, dtype=torch.float16)
+        B_T = B.T.contiguous()
         group_A.append(A)
         group_B.append(B)
+        group_B_T.append(B_T)
         group_C.append(C)
         A_addrs.append(A.data_ptr())
         B_addrs.append(B.data_ptr())
+        B_T_addrs.append(B_T.data_ptr())
         C_addrs.append(C.data_ptr())
         g_sizes += [M, N, K]
         g_lds += [A.stride(0), B.stride(0), C.stride(0)]
 
     d_a_ptrs = torch.tensor(A_addrs, device=DEVICE)
     d_b_ptrs = torch.tensor(B_addrs, device=DEVICE)
+    d_b_t_ptrs = torch.tensor(B_T_addrs, device=DEVICE)
     d_c_ptrs = torch.tensor(C_addrs, device=DEVICE)
     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=DEVICE)
@@ -387,6 +393,19 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
             group_size,
         )
 
+    def triton_tma_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size, dtype):
+        grid = lambda META: (META['NUM_SM'], )
+        grouped_matmul_tma_kernel[grid](
+            d_a_ptrs,
+            d_b_ptrs,
+            d_c_ptrs,
+            d_g_sizes,
+            d_g_lds,
+            group_size,
+            FP8=torch.float8_e4m3fn == dtype,
+            NUM_SM=num_sms(),
+        )
+
     def gbps(ms):
         flops = 0
         for i in range(group_size):
@@ -398,6 +417,8 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
         if provider == 'triton':
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size), quantiles=quantiles)
+        if provider == 'triton-tma':
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tma_perf_fn(d_a_ptrs, d_b_t_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size, group_A[0].dtype), quantiles=quantiles)
         return ms, min_ms, max_ms
     
     elif bench_type == "flops":
@@ -405,6 +426,8 @@ def bench_group_gemm_generic(M, N, K, provider="triton", bench_type="latency"):
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
         if provider == 'triton':
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size), quantiles=quantiles)
+        if provider == 'triton-tma':
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tma_perf_fn(d_a_ptrs, d_b_t_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size, group_A[0].dtype), quantiles=quantiles)
         return gbps(ms), gbps(max_ms), gbps(min_ms)
 
 def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None, K=None):
@@ -461,12 +484,12 @@ if __name__ == "__main__":
             assert torch.allclose(out_ref[i], out_triton_tma[i], atol=1e-2, rtol=1e-2)
             print(f"✅ Group {i} (TMA) passed")
 
-    # bench_grouped_gemm_flops_square = make_benchmark("flops", "square", x_name="N", y_label="GBs/s")
-    # bench_grouped_gemm_flops_batch = make_benchmark("flops", "batch", x_name="M", y_label="GBs/s")
-    # bench_grouped_gemm_latency_square = make_benchmark("latency", "square", x_name="N", y_label="ms")
-    # bench_grouped_gemm_latency_batch = make_benchmark("latency", "batch", x_name="M", y_label="ms")
+    bench_grouped_gemm_flops_square = make_benchmark("flops", "square", x_name="N", y_label="GBs/s")
+    bench_grouped_gemm_flops_batch = make_benchmark("flops", "batch", x_name="M", y_label="GBs/s")
+    bench_grouped_gemm_latency_square = make_benchmark("latency", "square", x_name="N", y_label="ms")
+    bench_grouped_gemm_latency_batch = make_benchmark("latency", "batch", x_name="M", y_label="ms")
 
-    # bench_grouped_gemm_flops_square.run(save_path='plots/grouped_gemm', print_data=True)
-    # bench_grouped_gemm_flops_batch.run(save_path='plots/grouped_gemm', print_data=True)
-    # bench_grouped_gemm_latency_square.run(save_path='plots/grouped_gemm', print_data=True)
-    # bench_grouped_gemm_latency_batch.run(save_path='plots/grouped_gemm', print_data=True)
+    bench_grouped_gemm_flops_square.run(save_path='plots/grouped_gemm', print_data=True)
+    bench_grouped_gemm_flops_batch.run(save_path='plots/grouped_gemm', print_data=True)
+    bench_grouped_gemm_latency_square.run(save_path='plots/grouped_gemm', print_data=True)
+    bench_grouped_gemm_latency_batch.run(save_path='plots/grouped_gemm', print_data=True)
