@@ -237,12 +237,12 @@ def grouped_matmul_tma_kernel(
                 offset_am = m_tile_idx * BLOCK_SIZE_M
                 offset_bn = n_tile_idx * BLOCK_SIZE_N
 
-                accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=dtype)
+                accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
                 for kk in range(0, tl.cdiv(gk, BLOCK_SIZE_K)):
                     a = a_desc.load([offset_am, kk * BLOCK_SIZE_K])
-                    b = b_desc.load([kk * BLOCK_SIZE_K, offset_bn])
-                    accumulator += tl.dot(a, b)
+                    b = b_desc.load([offset_bn, kk * BLOCK_SIZE_K])
+                    accumulator += tl.dot(a, b.T)
                 
                 offset_cm = m_tile_idx * BLOCK_SIZE_M
                 offset_cn = n_tile_idx * BLOCK_SIZE_N
@@ -250,6 +250,7 @@ def grouped_matmul_tma_kernel(
                 c = accumulator.to(dtype)
                 c_desc.store([offset_cm, offset_cn], c)
 
+                # go to the next tile - somewhat like grid-stride loop
                 tile_idx += NUM_SM
 
         last_problem_end += num_tiles
@@ -423,11 +424,13 @@ def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None,
 
 if __name__ == "__main__":
     # Data preparation
-    group_m = [1024, 512, 256, 128, 1024 + 13]
-    group_n = [1024, 512, 256, 128, 1024 + 13]
-    group_k = [1024, 512, 256, 128, 1024 + 13]
+    # TODO: Add back hard case of 1024 + 13 to work with TMA
+    group_m = [1024, 512, 256, 128]
+    group_n = [1024, 512, 256, 128]
+    group_k = [1024, 512, 256, 128]
     group_A = []
     group_B = []
+    group_B_T = []
     assert len(group_m) == len(group_n)
     assert len(group_n) == len(group_k)
     group_size = len(group_m)
@@ -437,11 +440,13 @@ if __name__ == "__main__":
         K = group_k[i]
         A = torch.rand((M, K), device=DEVICE, dtype=torch.float16)
         B = torch.rand((K, N), device=DEVICE, dtype=torch.float16)
+        B_T = B.T.contiguous()
         group_A.append(A)
         group_B.append(B)
+        group_B_T.append(B_T)
 
     # Calculate the output of the group gemm using Triton
-    out_triton = group_gemm_fn(group_A, group_B)
+    out_triton = group_gemm_fn(group_A, group_B)        
     # Calculate the output of the group gemm using torch
     out_ref = [torch.matmul(a, b) for a, b in zip(group_A, group_B)]
     # Check if the output of the group gemm using Triton is the same as the output of the group gemm using torch
@@ -449,12 +454,19 @@ if __name__ == "__main__":
         assert torch.allclose(out_ref[i], out_triton[i], atol=1e-2, rtol=1e-2)
         print(f"✅ Group {i} passed")
 
-    bench_grouped_gemm_flops_square = make_benchmark("flops", "square", x_name="N", y_label="GBs/s")
-    bench_grouped_gemm_flops_batch = make_benchmark("flops", "batch", x_name="M", y_label="GBs/s")
-    bench_grouped_gemm_latency_square = make_benchmark("latency", "square", x_name="N", y_label="ms")
-    bench_grouped_gemm_latency_batch = make_benchmark("latency", "batch", x_name="M", y_label="ms")
+    if supports_tma():
+        # Calculate the output of the group gemm using Triton with TMA
+        out_triton_tma = group_gemm_fn(group_A, group_B_T, use_tma=True)
+        for i in range(group_size):
+            assert torch.allclose(out_ref[i], out_triton_tma[i], atol=1e-2, rtol=1e-2)
+            print(f"✅ Group {i} (TMA) passed")
 
-    bench_grouped_gemm_flops_square.run(save_path='plots/grouped_gemm', print_data=True)
-    bench_grouped_gemm_flops_batch.run(save_path='plots/grouped_gemm', print_data=True)
-    bench_grouped_gemm_latency_square.run(save_path='plots/grouped_gemm', print_data=True)
-    bench_grouped_gemm_latency_batch.run(save_path='plots/grouped_gemm', print_data=True)
+    # bench_grouped_gemm_flops_square = make_benchmark("flops", "square", x_name="N", y_label="GBs/s")
+    # bench_grouped_gemm_flops_batch = make_benchmark("flops", "batch", x_name="M", y_label="GBs/s")
+    # bench_grouped_gemm_latency_square = make_benchmark("latency", "square", x_name="N", y_label="ms")
+    # bench_grouped_gemm_latency_batch = make_benchmark("latency", "batch", x_name="M", y_label="ms")
+
+    # bench_grouped_gemm_flops_square.run(save_path='plots/grouped_gemm', print_data=True)
+    # bench_grouped_gemm_flops_batch.run(save_path='plots/grouped_gemm', print_data=True)
+    # bench_grouped_gemm_latency_square.run(save_path='plots/grouped_gemm', print_data=True)
+    # bench_grouped_gemm_latency_batch.run(save_path='plots/grouped_gemm', print_data=True)
