@@ -121,6 +121,8 @@ def grouped_matmul_kernel(
                 # load tile
                 a = tl.load(a_ptrs, mask=(offset_am[:, None] < gm) & (k_offset + offset_k[None, :] < gk), other=0.0)
                 b = tl.load(b_ptrs, mask=(k_offset + offset_k[:, None] < gk) & (offset_bn[None, :] < gn), other=0.0)
+
+                # no masking is faster
                 # a = tl.load(a_ptrs)
                 # b = tl.load(b_ptrs)
 
@@ -136,6 +138,9 @@ def grouped_matmul_kernel(
             c_ptrs = c_ptr + offset_cm[:, None] * stride_c + offset_cn[None, :]
 
             tl.store(c_ptrs, c, mask=(offset_cm[:, None] < gm) & (offset_cn[None, :] < gn))
+            
+            # no masking is faster
+            # tl.store(c_ptrs, c)
 
             # go to the next tile - somewhat like grid-stride loop
             tile_idx += NUM_SM
@@ -272,7 +277,7 @@ def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None,
     @create_perf_report(mode, bench_type, x_name, y_label)
     def bench(provider, **kwargs):
         if mode == "square":
-            M = kwargs['N']            
+            M = kwargs['N']
             N = kwargs['N']
             K = kwargs['N']
         elif mode == "batch":
