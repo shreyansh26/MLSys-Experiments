@@ -122,7 +122,7 @@ def grouped_matmul_kernel(
                 a = tl.load(a_ptrs, mask=(offset_am[:, None] < gm) & (k_offset + offset_k[None, :] < gk), other=0.0)
                 b = tl.load(b_ptrs, mask=(k_offset + offset_k[:, None] < gk) & (offset_bn[None, :] < gn), other=0.0)
 
-                # no masking is faster
+                # no masking is faster but incorrect for non-block-size-aligned tiles
                 # a = tl.load(a_ptrs)
                 # b = tl.load(b_ptrs)
 
@@ -137,9 +137,10 @@ def grouped_matmul_kernel(
 
             c_ptrs = c_ptr + offset_cm[:, None] * stride_c + offset_cn[None, :]
 
+            # store the result
             tl.store(c_ptrs, c, mask=(offset_cm[:, None] < gm) & (offset_cn[None, :] < gn))
             
-            # no masking is faster
+            # no masking is faster but incorrect for non-block-size-aligned tiles
             # tl.store(c_ptrs, c)
 
             # go to the next tile - somewhat like grid-stride loop
