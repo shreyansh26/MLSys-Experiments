@@ -166,7 +166,7 @@ tma_configs = [
 
 @triton.autotune(
     tma_configs,
-    key=['group_a_ptrs', 'group_b_ptrs', 'gropup_c_ptrs', 'group_size'],
+    key=['group_a_ptrs', 'group_b_ptrs', 'group_c_ptrs', 'group_size'],
 )
 @triton.jit
 def grouped_matmul_tma_kernel(
@@ -445,13 +445,12 @@ def make_benchmark(bench_type, mode, x_name="N", y_label="GB/s", M=None, N=None,
         return bench_group_gemm_generic(M=M, N=N, K=K, provider=provider, bench_type=bench_type)
     return bench
 
-if __name__ == "__main__":
-    # Data preparation
-    # TODO: Add back hard case of 1024 + 13 to work with TMA
-    group_m = [1024, 512, 256, 128]
-    group_n = [1024, 512, 256, 128]
-    group_k = [1024, 512, 256, 128]
+def get_groups(group_m, group_n, group_k):
     group_A = []
+    group_B = []
+    group_B_T = []
+    for i in range(len(group_m)):
+        group_A = []
     group_B = []
     group_B_T = []
     assert len(group_m) == len(group_n)
@@ -468,6 +467,16 @@ if __name__ == "__main__":
         group_B.append(B)
         group_B_T.append(B_T)
 
+    return group_A, group_B, group_B_T, group_size
+
+if __name__ == "__main__":
+    # Data preparation
+    # TODO: Add back hard case of 1024 + 13 to work with TMA
+    group_m = [1024, 512, 256, 128, 1024 + 13]
+    group_n = [1024, 512, 256, 128, 1024 + 13]
+    group_k = [1024, 512, 256, 128, 1024 + 13]
+    group_A, group_B, group_B_T, group_size = get_groups(group_m, group_n, group_k)
+
     # Calculate the output of the group gemm using Triton
     out_triton = group_gemm_fn(group_A, group_B)        
     # Calculate the output of the group gemm using torch
@@ -479,6 +488,9 @@ if __name__ == "__main__":
 
     if supports_tma():
         # Calculate the output of the group gemm using Triton with TMA
+        group_A = group_A[:-1]
+        group_B_T = group_B_T[:-1]
+        group_size = len(group_A)
         out_triton_tma = group_gemm_fn(group_A, group_B_T, use_tma=True)
         for i in range(group_size):
             assert torch.allclose(out_ref[i], out_triton_tma[i], atol=1e-2, rtol=1e-2)
