@@ -235,7 +235,7 @@ if __name__ == "__main__":
         else:
             print(f"❌ Naive Triton and Torch do not match. dtype {a.dtype}")
 
-    proton.start("matmul_fp8" if FP8 else "matmul_fp16", hook="triton")
+    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
     proton.deactivate()
     for K in range(1024, 8192 + 1, 1024):
         bench(K, a.dtype)
