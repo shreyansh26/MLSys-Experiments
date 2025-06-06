@@ -221,7 +221,7 @@ def matmul_tma(a, b, warp_specialize=False):
     matmul_tma_kernel[grid](
         a_desc, b_desc, c_desc,
         M, N, K,
-        FP8=a.dtype == torch.float8_e4m3fn,
+        FP8_OUTPUT=a.dtype == torch.float8_e4m3fn,
         WARP_SPECIALIZE=warp_specialize,
     )
     return c
