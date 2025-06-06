@@ -262,6 +262,86 @@ def matmul_persistent_kernel(
 
         tl.store(c_ptrs, accumulator, mask=c_mask)
 
+def matmul_tma_persistent_get_configs(pre_hook=None):
+    return [
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K": BK, "GROUP_SIZE_M": 8, "EPILOGUE_SUBTILE": SUBTILE
+            }, num_stages=s, num_warps=w, pre_hook=pre_hook)
+        for BM in [64, 128, 256]
+        for BN in [64, 128, 256]
+        for BK in [64, 128, 256]
+        for s in ([2, 3, 4, 5])
+        for w in [4, 8]
+        for SUBTILE in [True, False]
+    ]
+@triton.autotune(
+    configs=matmul_tma_persistent_get_configs(pre_hook=matmul_tma_set_block_size_hook),
+    key=["M", "N", "K", "WARP_SPECIALIZE"],
+)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
+def matmul_tma_persistent_kernel(
+    a_desc, b_desc, c_desc,
+    M, N, K,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    FP8_OUTPUT: tl.constexpr,
+    WARP_SPECIALIZE: tl.constexpr,
+    EPILOGUE_SUBTILE: tl.constexpr,
+    NUM_SMS: tl.constexpr,
+):
+    dtype = tl.float8e4nv if FP8_OUTPUT else tl.float16
+    start_pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    
+    k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+    num_tiles = num_pid_m * num_pid_n
+
+    # NOTE: There is currently a bug in blackwell pipelining that means it can't handle a value being
+    # used in both the prologue and epilogue, so we duplicate the counters as a work-around.
+    tile_id_c = start_pid - NUM_SMS
+
+    # Enable warp specialization to leverage async warp scheduling in the GPU.
+    # FIXME: This only works on Blackwell right now. On older GPUs, this will
+    # use software pipelining.
+    for tile_id in tl.range(start_pid, num_tiles, NUM_SMS, flatten=True, warp_specialize=WARP_SPECIALIZE):
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        offset_am = pid_m * BLOCK_SIZE_M
+        offset_bn = pid_n * BLOCK_SIZE_N
+
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+        for kk in range(k_tiles):
+            offset_k = kk * BLOCK_SIZE_K
+            a = a_desc.load([offset_am, offset_k])
+            b = b_desc.load([offset_bn, offset_k])
+            accumulator = tl.dot(a, b.T, accumulator)
+        
+        tile_id_c += NUM_SMS
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id_c, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        offset_cm = pid_m * BLOCK_SIZE_M
+        offset_cn = pid_n * BLOCK_SIZE_N
+        
+        # Epilogue subtiling is a technique to break our computation and stores into multiple pieces
+        # By subtiling we can reduce shared memory consumption by the epilogue and instead use that
+        # memory to increase our stage count.
+        # In this case we partition the accumulator into 2 BLOCK_SIZE_M x BLOCK_SIZE_N // 2 tensors
+        if EPILOGUE_SUBTILE:
+            acc = tl.reshape(accumulator, (BLOCK_SIZE_M, 2, BLOCK_SIZE_N // 2))
+            acc = tl.permute(acc, (0, 2, 1))
+            acc0, acc1 = tl.split(acc) # By default on last dimension which must have size 2
+            c0 = acc0.to(dtype)
+            c1 = acc1.to(dtype)
+            c_desc.store([offset_cm, offset_cn], c0)
+            c_desc.store([offset_cm, offset_cn + BLOCK_SIZE_N // 2], c1)
+        else:
+            accumulator = accumulator.to(dtype)
+            c_desc.store([offset_cm, offset_cn], accumulator)
+        
 def matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -329,6 +409,33 @@ def matmul_persistent(a, b):
     )
     return c
 
+def matmul_tma_persistent(a, b, warp_specialize=False):
+    # Check constraints.
+    assert a.shape[1] == b.shape[1], "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    M, K = a.shape
+    N, K = b.shape
+    dtype = a.dtype
+
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+
+    dummy_block = [1, 1]
+    a_desc = TensorDescriptor(a, a.shape, a.stride(), dummy_block)
+    b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
+    c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+
+    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
+    matmul_tma_persistent_kernel[grid](
+        a_desc, b_desc, c_desc,
+        M, N, K,
+        FP8_OUTPUT=a.dtype == torch.float8_e4m3fn,
+        WARP_SPECIALIZE=warp_specialize,
+        NUM_SMS=NUM_SMS,
+    )
+    return c
+
 def cublas_matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[1], "Incompatible dimensions"  # b is transposed
@@ -390,14 +497,14 @@ def bench(K, dtype, reps=10000, warmup_reps=10000):
     if dtype == torch.float16:
         bench_fn("torch", reps, warmup_reps, torch_matmul, a, b)
     bench_fn("naive", reps, warmup_reps, matmul, a, b.T)
-    bench_fn("persistent", reps, warmup_reps, matmul_persistent, a, b)
+    bench_fn("persistent", reps, warmup_reps, matmul_persistent, a, b.T)
     warp_specialize = [False, True] if HAS_WARP_SPECIALIZE else [False]
 
     for ws in warp_specialize:
         ws_str = "_ws" if ws else ""
         if HAS_HOST_TENSOR_DESC:
             bench_fn(f"tma{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma(a, b, ws), a, b)
-            # bench_fn(f"tma_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_persistent(a, b, ws), a, b)
+            bench_fn(f"tma_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_persistent(a, b, ws), a, b)
         # if HAS_TENSOR_DESC:
         #     bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_descriptor_persistent(a, b, ws), a, b)
         
@@ -415,6 +522,7 @@ if __name__ == "__main__":
     c_naive_triton = matmul(a, b)
     c_tma_triton = matmul_tma(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
     c_persistent_triton = matmul_persistent(a, b)
+    c_tma_persistent_triton = matmul_tma_persistent(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
     c_cublas = cublas_matmul(a, b_t)
 
     if not FP8:
@@ -452,6 +560,17 @@ if __name__ == "__main__":
             print(f"✅ Persistent Triton and Torch match. dtype {a.dtype}")
         else:
             print(f"❌ Persistent Triton and Torch do not match. dtype {a.dtype}")
+
+    if custom_allclose(c_tma_persistent_triton, c_cublas):
+        print(f"✅ TMA Persistent Triton and Cublas match. dtype {a.dtype}")
+    else:
+        print(f"❌ TMA Persistent Triton and Cublas do not match. dtype {a.dtype}")
+    
+    if not FP8:
+        if custom_allclose(c_tma_persistent_triton, c_torch):
+            print(f"✅ TMA Persistent Triton and Torch match. dtype {a.dtype}")
+        else:
+            print(f"❌ TMA Persistent Triton and Torch do not match. dtype {a.dtype}")
 
     proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
     proton.deactivate()
