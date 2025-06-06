@@ -3,6 +3,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.profiler as proton
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from contextlib import contextmanager
 
@@ -126,6 +127,60 @@ def matmul_naive_kernel(
     c_mask = (offset_cm[:, None] < M) & (offset_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)
 
+def matmul_tma_set_block_size_hook(nargs):
+    EPILOGUE_SUBTILE = nargs.get("EPILOGUE_SUBTILE", False)
+    BLOCK_M = nargs["BLOCK_SIZE_M"]
+    BLOCK_N = nargs["BLOCK_SIZE_N"]
+    BLOCK_K = nargs["BLOCK_SIZE_K"]
+    nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+    if EPILOGUE_SUBTILE:
+        nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N // 2]
+    else:
+        nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
+
+@triton.autotune(
+    configs=matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook),
+    key=["M", "N", "K", "WARP_SPECIALIZE"],
+)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
+def matmul_tma_kernel(
+    a_desc, b_desc, c_desc,
+    M, N, K,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    FP8: tl.constexpr,
+    WARP_SPECIALIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    pid_m, pid_n = get_group_pids(pid, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, GROUP_SIZE_M)
+    
+    k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+
+    # similar to start_m in naive kernel
+    offset_am = pid_m * BLOCK_SIZE_M   
+    offset_bn = pid_n * BLOCK_SIZE_N
+
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+    for k in tl.range(k_tiles, warp_specialize=WARP_SPECIALIZE):
+        offset_k = k * BLOCK_SIZE_K
+        a = a_desc.load([offset_am, offset_k])
+        b = b_desc.load([offset_bn, offset_k])
+        accumulator = tl.dot(a, b.T, accumulator)
+    
+    if FP8:
+        c = accumulator.to(tl.float8e4nv)
+    else:   
+        c = accumulator.to(tl.float16)
+    
+    offset_cm = pid_m * BLOCK_SIZE_M
+    offset_cn = pid_n * BLOCK_SIZE_N
+    
+    c_desc.store([offset_cm, offset_cn], c)
+
 def matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -143,6 +198,31 @@ def matmul(a, b):
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         c.stride(0), c.stride(1),
+    )
+    return c
+
+def matmul_tma(a, b, warp_specialize=False):
+    # Check constraints.
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    M, K = a.shape
+    K, N = b.shape
+    dtype = a.dtype
+
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+
+    dummy_block = [1, 1]
+    a_desc = TensorDescriptor(a, a.shape, a.stride(), dummy_block)
+    b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
+    c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
+    matmul_tma_kernel[grid](
+        a_desc, b_desc, c_desc,
+        M, N, K,
+        FP8=a.dtype == torch.float8_e4m3fn,
+        WARP_SPECIALIZE=warp_specialize,
     )
     return c
 
@@ -207,9 +287,19 @@ def bench(K, dtype, reps=10000, warmup_reps=10000):
     if dtype == torch.float16:
         bench_fn("torch", reps, warmup_reps, torch_matmul, a, b)
     bench_fn("naive", reps, warmup_reps, matmul, a, b.T)
+    warp_specialize = [False, True] if HAS_WARP_SPECIALIZE else [False]
+
+    for ws in warp_specialize:
+        ws_str = "_ws" if ws else ""
+        if HAS_HOST_TENSOR_DESC:
+            bench_fn(f"tma{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma(a, b, ws), a, b)
+            # bench_fn(f"tma_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_persistent(a, b, ws), a, b)
+        # if HAS_TENSOR_DESC:
+        #     bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_descriptor_persistent(a, b, ws), a, b)
+        
 
 if __name__ == "__main__":
-    FP8 = True
+    FP8 = False
     a = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
     b = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
 
@@ -219,6 +309,7 @@ if __name__ == "__main__":
 
     b_t = b.T.contiguous()
     c_naive_triton = matmul(a, b)
+    c_tma_triton = matmul_tma(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
     c_cublas = cublas_matmul(a, b_t)
 
     if not FP8:
@@ -228,14 +319,26 @@ if __name__ == "__main__":
         print(f"✅ Naive Triton and Cublas match. dtype {a.dtype}")
     else:
         print(f"❌ Naive Triton and Cublas do not match. dtype {a.dtype}")
+
     if not FP8:
         if custom_allclose(c_naive_triton, c_torch):
             print(f"✅ Naive Triton and Torch match. dtype {a.dtype}")
         else:
             print(f"❌ Naive Triton and Torch do not match. dtype {a.dtype}")
 
-    proton.start("matmul_fp8" if FP8 else "matmul_fp16", hook="triton")
-    proton.deactivate()
-    for K in range(1024, 8192 + 1, 1024):
-        bench(K, a.dtype)
-    proton.finalize()
+    if custom_allclose(c_tma_triton, c_cublas):
+        print(f"✅ TMA Triton and Cublas match. dtype {a.dtype}")
+    else:
+        print(f"❌ TMA Triton and Cublas do not match. dtype {a.dtype}")
+    
+    if not FP8:
+        if custom_allclose(c_tma_triton, c_torch):
+            print(f"✅ TMA Triton and Torch match. dtype {a.dtype}")
+        else:
+            print(f"❌ TMA Triton and Torch do not match. dtype {a.dtype}")
+
+    # proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
+    # proton.deactivate()
+    # for K in range(1024, 8192 + 1, 1024):
+    #     bench(K, a.dtype)
+    # proton.finalize()
