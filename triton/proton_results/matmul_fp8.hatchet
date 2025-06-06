@@ -14,7 +14,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 1178084831
+                            "time (ns)": 1250690844
                         }
                     }
                 ],
@@ -39,7 +39,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 2204511679
+                            "time (ns)": 2203026740
                         }
                     }
                 ],
@@ -64,7 +64,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 3353451733
+                            "time (ns)": 3361098132
                         }
                     }
                 ],
@@ -89,7 +89,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 4361749830
+                            "time (ns)": 4366871683
                         }
                     }
                 ],
@@ -114,7 +114,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 5440158589
+                            "time (ns)": 5454712288
                         }
                     }
                 ],
@@ -139,7 +139,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 6531396641
+                            "time (ns)": 6542716692
                         }
                     }
                 ],
@@ -164,7 +164,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 7611838277
+                            "time (ns)": 7602864686
                         }
                     }
                 ],
@@ -189,7 +189,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 8699116544
+                            "time (ns)": 8719724389
                         }
                     }
                 ],
@@ -214,7 +214,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.37438953472e+15,
-                    "time (ns)": 11372816775
+                    "time (ns)": 13370806834
                 }
             },
             {
@@ -229,7 +229,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 2.74877906944e+15,
-                    "time (ns)": 11796110727
+                    "time (ns)": 11794337510
                 }
             },
             {
@@ -244,7 +244,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 4.12316860416e+15,
-                    "time (ns)": 12272922172
+                    "time (ns)": 12267967369
                 }
             },
             {
@@ -259,7 +259,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 5.49755813888e+15,
-                    "time (ns)": 12784067194
+                    "time (ns)": 12796808307
                 }
             },
             {
@@ -274,7 +274,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 6.8719476736e+15,
-                    "time (ns)": 13238339153
+                    "time (ns)": 13243052550
                 }
             },
             {
@@ -289,7 +289,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 8.24633720832e+15,
-                    "time (ns)": 14051622011
+                    "time (ns)": 14064867577
                 }
             },
             {
@@ -304,7 +304,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 9.62072674304e+15,
-                    "time (ns)": 14838060372
+                    "time (ns)": 14892605641
                 }
             },
             {
@@ -319,7 +319,127 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.099511627776e+16,
-                    "time (ns)": 15831836646
+                    "time (ns)": 15818740989
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=1024]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 838860800000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.37438953472e+15,
+                    "time (ns)": 1286393862
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=2048]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1006632960000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 2.74877906944e+15,
+                    "time (ns)": 2355195598
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=3072]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3374443736
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=4096]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1342177280000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 5.49755813888e+15,
+                    "time (ns)": 4427119270
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=5120]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1509949440000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 6.8719476736e+15,
+                    "time (ns)": 5528518656
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=6144]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1677721600000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 8.24633720832e+15,
+                    "time (ns)": 6595225470
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=7168]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1845493760000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 9.62072674304e+15,
+                    "time (ns)": 7588760853
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=8192]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 2013265920000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.099511627776e+16,
+                    "time (ns)": 8611579103
                 }
             },
             {
@@ -334,7 +454,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.37438953472e+15,
-                    "time (ns)": 1316462687
+                    "time (ns)": 1319504206
                 }
             },
             {
@@ -349,7 +469,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 2.74877906944e+15,
-                    "time (ns)": 2470731472
+                    "time (ns)": 2480423735
                 }
             },
             {
@@ -364,7 +484,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 4.12316860416e+15,
-                    "time (ns)": 3625786302
+                    "time (ns)": 3529278045
                 }
             },
             {
@@ -379,7 +499,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 5.49755813888e+15,
-                    "time (ns)": 4549127395
+                    "time (ns)": 4557096543
                 }
             },
             {
@@ -394,7 +514,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 6.8719476736e+15,
-                    "time (ns)": 5587365734
+                    "time (ns)": 5590418556
                 }
             },
             {
@@ -409,7 +529,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 8.24633720832e+15,
-                    "time (ns)": 6682246077
+                    "time (ns)": 6661245743
                 }
             },
             {
@@ -424,7 +544,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 9.62072674304e+15,
-                    "time (ns)": 7729817487
+                    "time (ns)": 7727707911
                 }
             },
             {
@@ -439,7 +559,7 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.099511627776e+16,
-                    "time (ns)": 8758366511
+                    "time (ns)": 8777708262
                 }
             }
         ],
