@@ -14,7 +14,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 1178874288
+                            "time (ns)": 1178084831
                         }
                     }
                 ],
@@ -39,7 +39,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 2219729298
+                            "time (ns)": 2204511679
                         }
                     }
                 ],
@@ -64,7 +64,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 3359757271
+                            "time (ns)": 3353451733
                         }
                     }
                 ],
@@ -89,7 +89,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 4342559155
+                            "time (ns)": 4361749830
                         }
                     }
                 ],
@@ -114,7 +114,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 5445486773
+                            "time (ns)": 5440158589
                         }
                     }
                 ],
@@ -139,7 +139,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 6539765231
+                            "time (ns)": 6531396641
                         }
                     }
                 ],
@@ -164,7 +164,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 7619137328
+                            "time (ns)": 7611838277
                         }
                     }
                 ],
@@ -189,7 +189,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 8714348891
+                            "time (ns)": 8699116544
                         }
                     }
                 ],
@@ -205,7 +205,7 @@
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=1024]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=1024]",
                     "type": "function"
                 },
                 "metrics": {
@@ -214,13 +214,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.37438953472e+15,
-                    "time (ns)": 11370819481
+                    "time (ns)": 11372816775
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=2048]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=2048]",
                     "type": "function"
                 },
                 "metrics": {
@@ -229,13 +229,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 2.74877906944e+15,
-                    "time (ns)": 11796181256
+                    "time (ns)": 11796110727
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=3072]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=3072]",
                     "type": "function"
                 },
                 "metrics": {
@@ -244,13 +244,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 4.12316860416e+15,
-                    "time (ns)": 12273348021
+                    "time (ns)": 12272922172
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=4096]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=4096]",
                     "type": "function"
                 },
                 "metrics": {
@@ -259,13 +259,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 5.49755813888e+15,
-                    "time (ns)": 12779142764
+                    "time (ns)": 12784067194
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=5120]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=5120]",
                     "type": "function"
                 },
                 "metrics": {
@@ -274,13 +274,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 6.8719476736e+15,
-                    "time (ns)": 13239080900
+                    "time (ns)": 13238339153
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=6144]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=6144]",
                     "type": "function"
                 },
                 "metrics": {
@@ -289,13 +289,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 8.24633720832e+15,
-                    "time (ns)": 14057582128
+                    "time (ns)": 14051622011
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=7168]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=7168]",
                     "type": "function"
                 },
                 "metrics": {
@@ -304,13 +304,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 9.62072674304e+15,
-                    "time (ns)": 14829803788
+                    "time (ns)": 14838060372
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_kernel [M=8192, N=8192, K=8192]",
+                    "name": "matmul_naive_kernel [M=8192, N=8192, K=8192]",
                     "type": "function"
                 },
                 "metrics": {
@@ -319,7 +319,127 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.099511627776e+16,
-                    "time (ns)": 15847857956
+                    "time (ns)": 15831836646
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=1024]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 838860800000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.37438953472e+15,
+                    "time (ns)": 1316462687
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=2048]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1006632960000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 2.74877906944e+15,
+                    "time (ns)": 2470731472
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=3072]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3625786302
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=4096]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1342177280000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 5.49755813888e+15,
+                    "time (ns)": 4549127395
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=5120]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1509949440000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 6.8719476736e+15,
+                    "time (ns)": 5587365734
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=6144]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1677721600000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 8.24633720832e+15,
+                    "time (ns)": 6682246077
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=7168]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1845493760000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 9.62072674304e+15,
+                    "time (ns)": 7729817487
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel [M=8192, N=8192, K=8192]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 2013265920000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.099511627776e+16,
+                    "time (ns)": 8758366511
                 }
             }
         ],
