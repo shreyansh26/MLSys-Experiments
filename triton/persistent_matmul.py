@@ -2,6 +2,9 @@ import torch
 
 import triton
 import triton.language as tl
+import triton.profiler as proton
+
+from contextlib import contextmanager
 
 if torch.cuda.is_available():
     from triton._C.libtriton import nvidia
@@ -57,11 +60,11 @@ def get_group_pids(pid, M, N, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.const
 def matmul_get_configs(pre_hook=None):
     return [
         triton.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K" : BK, "GROUP_SIZE_M" : 8}, num_stages=s, num_warps=w, pre_hook=pre_hook) \
-        for BM in [128] \
-        for BN in [128, 256] \
-        for BK in [64,128] \
-        for s in ([3,4]) \
-        for w in [4,8] \
+        for BM in [64, 128, 256] \
+        for BN in [64, 128, 256] \
+        for BK in [64, 128, 256] \
+        for s in ([3, 4, 5]) \
+        for w in [4, 8] \
     ]
 
 @triton.autotune(
@@ -69,7 +72,7 @@ def matmul_get_configs(pre_hook=None):
     key=["M", "N", "K"],
 )
 @triton.jit(launch_metadata=_matmul_launch_metadata)
-def matmul_kernel(
+def matmul_naive_kernel(
     a_ptr, b_ptr, c_ptr,
     M, N, K, 
     stride_am, stride_ak,
@@ -85,7 +88,6 @@ def matmul_kernel(
 
     start_m = pid_m * BLOCK_SIZE_M
     start_n = pid_n * BLOCK_SIZE_N
-    start_k = 0
 
     offset_am = start_m + tl.arange(0, BLOCK_SIZE_M)
     offset_bn = start_n + tl.arange(0, BLOCK_SIZE_N)
@@ -135,7 +137,7 @@ def matmul(a, b):
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
     grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
-    matmul_kernel[grid](
+    matmul_naive_kernel[grid](
         a, b, c,
         M, N, K,
         a.stride(0), a.stride(1),
@@ -151,14 +153,22 @@ def cublas_matmul(a, b):
     N, K = b.shape
     dtype = a.dtype
     c = torch.empty((M, N), device=a.device, dtype=dtype)
-    cublas.matmul(a, b, c)
+    bytes_per_elem = a.element_size()
+    flops_str = f"flops{bytes_per_elem * 8}"
+    with proton.scope(f"cublas [M={M}, N={N}, K={K}]",
+                      {"bytes": bytes_per_elem * (M * K + N * K + M * N), flops_str: 2. * M * N * K}):
+        cublas.matmul(a, b, c)
     return c
 
 def torch_matmul(a, b):
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.shape[1] == b.shape[1], "Incompatible dimensions"
     M, K = a.shape
-    K, N = b.shape
-    c = torch.matmul(a, b)
+    N, K = b.shape
+    bytes_per_elem = a.element_size()
+    flops_str = f"flops{bytes_per_elem * 8}"
+    with proton.scope(f"torch [M={M}, N={N}, K={K}]",
+                      {"bytes": bytes_per_elem * (M * K + N * K + M * N), flops_str: 2. * M * N * K}):
+        c = torch.matmul(a, b.T)
     return c
 
 def custom_allclose(a, b, rtol=1e-2, atol=1e-2):
@@ -166,6 +176,37 @@ def custom_allclose(a, b, rtol=1e-2, atol=1e-2):
     a = a.to(torch.float32)
     b = b.to(torch.float32)
     return torch.allclose(a, b, rtol=rtol, atol=atol)
+
+@contextmanager
+def proton_context():
+    proton.activate(0)
+    try:
+        yield
+    finally:
+        proton.deactivate(0)
+
+def bench_fn(label, reps, warmup_reps, fn, *args):
+    print(f"Benchmarking {label}: ...", end="")
+    for _ in range(warmup_reps):
+        fn(*args)
+    with proton_context():
+        for _ in range(reps):
+            fn(*args)
+    print(f"\rBenchmarking {label}: done")
+
+def bench(K, dtype, reps=10000, warmup_reps=10000):
+    M = 8192
+    N = 8192
+    a = torch.randn((M, K), device="cuda", dtype=torch.float16).to(dtype)
+    b = torch.randn((K, N), device="cuda", dtype=torch.float16).to(dtype)
+
+    b = b.T.contiguous()
+
+    if cublas is not None:
+        bench_fn("cublas", reps, warmup_reps, cublas_matmul, a, b)
+    if dtype == torch.float16:
+        bench_fn("torch", reps, warmup_reps, torch_matmul, a, b)
+    bench_fn("naive", reps, warmup_reps, matmul, a, b.T)
 
 if __name__ == "__main__":
     FP8 = True
@@ -181,7 +222,7 @@ if __name__ == "__main__":
     c_cublas = cublas_matmul(a, b_t)
 
     if not FP8:
-        c_torch = torch_matmul(a, b)
+        c_torch = torch_matmul(a, b_t)
 
     if custom_allclose(c_naive_triton, c_cublas):
         print(f"✅ Naive Triton and Cublas match. dtype {a.dtype}")
@@ -192,3 +233,9 @@ if __name__ == "__main__":
             print(f"✅ Naive Triton and Torch match. dtype {a.dtype}")
         else:
             print(f"❌ Naive Triton and Torch do not match. dtype {a.dtype}")
+
+    proton.start("matmul_fp8" if FP8 else "matmul_fp16", hook="triton")
+    proton.deactivate()
+    for K in range(1024, 8192 + 1, 1024):
+        bench(K, a.dtype)
+    proton.finalize()
