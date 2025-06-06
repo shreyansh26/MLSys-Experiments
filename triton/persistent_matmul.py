@@ -151,7 +151,7 @@ def matmul_tma_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
-    FP8: tl.constexpr,
+    FP8_OUTPUT: tl.constexpr,
     WARP_SPECIALIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -171,7 +171,7 @@ def matmul_tma_kernel(
         b = b_desc.load([offset_bn, offset_k])
         accumulator = tl.dot(a, b.T, accumulator)
     
-    if FP8:
+    if FP8_OUTPUT:
         c = accumulator.to(tl.float8e4nv)
     else:   
         c = accumulator.to(tl.float16)
@@ -203,10 +203,10 @@ def matmul(a, b):
 
 def matmul_tma(a, b, warp_specialize=False):
     # Check constraints.
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.shape[1] == b.shape[1], "Incompatible dimensions"
     assert a.dtype == b.dtype, "Incompatible dtypes"
     M, K = a.shape
-    K, N = b.shape
+    N, K = b.shape
     dtype = a.dtype
 
     c = torch.empty((M, N), device=a.device, dtype=dtype)
@@ -337,8 +337,8 @@ if __name__ == "__main__":
         else:
             print(f"❌ TMA Triton and Torch do not match. dtype {a.dtype}")
 
-    # proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
-    # proton.deactivate()
-    # for K in range(1024, 8192 + 1, 1024):
-    #     bench(K, a.dtype)
-    # proton.finalize()
+    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
+    proton.deactivate()
+    for K in range(1024, 8192 + 1, 1024):
+        bench(K, a.dtype)
+    proton.finalize()
