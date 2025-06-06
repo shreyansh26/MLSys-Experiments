@@ -58,6 +58,16 @@ def get_group_pids(pid, M, N, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.const
 
     return pid_m, pid_n
 
+@triton.jit
+def get_group_pids_from_tileid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M: tl.constexpr):
+    group_id = tile_id // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + (tile_id % group_size_m)
+    pid_n = (tile_id % num_pid_in_group) // group_size_m
+
+    return pid_m, pid_n
+
 def matmul_get_configs(pre_hook=None):
     return [
         triton.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K" : BK, "GROUP_SIZE_M" : 8}, num_stages=s, num_warps=w, pre_hook=pre_hook) \
@@ -181,6 +191,77 @@ def matmul_tma_kernel(
     
     c_desc.store([offset_cm, offset_cn], c)
 
+@triton.autotune(
+    configs=matmul_get_configs(),
+    key=["M", "N", "K"],
+)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
+def matmul_persistent_kernel(
+    a_ptr, b_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    NUM_SMS: tl.constexpr,
+):
+    start_pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    
+    k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+    num_tiles = num_pid_m * num_pid_n
+
+    # NOTE: There is currently a bug in blackwell pipelining that means it can't handle a value being
+    # used in both the prologue and epilogue, so we duplicate the counters as a work-around.
+    tile_id_c = start_pid - NUM_SMS
+
+    offset_k_for_mask = tl.arange(0, BLOCK_SIZE_K)
+
+    for tile_id in tl.range(start_pid, num_tiles, NUM_SMS, flatten=True):
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        start_m = pid_m * BLOCK_SIZE_M
+        start_n = pid_n * BLOCK_SIZE_N
+        offset_am = start_m + tl.arange(0, BLOCK_SIZE_M)
+        offset_bn = start_n + tl.arange(0, BLOCK_SIZE_N)
+        
+        offset_am = tl.where(offset_am < M, offset_am, 0)
+        offset_bn = tl.where(offset_bn < N, offset_bn, 0)
+        
+        offset_am = tl.max_contiguous(tl.multiple_of(offset_am, BLOCK_SIZE_M), BLOCK_SIZE_M)
+        offset_bn = tl.max_contiguous(tl.multiple_of(offset_bn, BLOCK_SIZE_N), BLOCK_SIZE_N)
+        
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+        for kk in tl.range(k_tiles):
+            offset_k = kk * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+            # Move address calculation step entirely inside loop as opposed to 
+            # just increasing a_ptr and b_ptr along k dimension inside the loop.
+            a_ptrs = a_ptr + offset_am[:, None] * stride_am + offset_k[None, :] * stride_ak
+            b_ptrs = b_ptr + offset_k[:, None] * stride_bk + offset_bn[None, :] * stride_bn
+
+            a = tl.load(a_ptrs, mask=offset_k_for_mask[None, :] < K - kk * BLOCK_SIZE_K, other=0.0)
+            b = tl.load(b_ptrs, mask=offset_k_for_mask[:, None] < K - kk * BLOCK_SIZE_K, other=0.0)
+            accumulator = tl.dot(a, b, accumulator)
+        
+        tile_id_c += NUM_SMS
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id_c, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        offset_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+        offset_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+        
+        c_ptrs = c_ptr + offset_cm[:, None] * stride_cm + offset_cn[None, :] * stride_cn
+        c_mask = (offset_cm[:, None] < M) & (offset_cn[None, :] < N)
+
+        if c_ptr.dtype.element_ty == tl.float8e4nv:
+            accumulator = accumulator.to(tl.float8e4nv)
+        else:
+            accumulator = accumulator.to(tl.float16)
+
+        tl.store(c_ptrs, accumulator, mask=c_mask)
+
 def matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -223,6 +304,28 @@ def matmul_tma(a, b, warp_specialize=False):
         M, N, K,
         FP8_OUTPUT=a.dtype == torch.float8_e4m3fn,
         WARP_SPECIALIZE=warp_specialize,
+    )
+    return c
+
+def matmul_persistent(a, b):
+    # Check constraints.
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    M, K = a.shape
+    K, N = b.shape
+    dtype = a.dtype
+    # Allocates output.
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
+    matmul_persistent_kernel[grid](
+        a, b, c,
+        M, N, K,
+        a.stride(0), a.stride(1),
+        b.stride(0), b.stride(1),
+        c.stride(0), c.stride(1),
+        NUM_SMS=NUM_SMS,
     )
     return c
 
@@ -287,6 +390,7 @@ def bench(K, dtype, reps=10000, warmup_reps=10000):
     if dtype == torch.float16:
         bench_fn("torch", reps, warmup_reps, torch_matmul, a, b)
     bench_fn("naive", reps, warmup_reps, matmul, a, b.T)
+    bench_fn("persistent", reps, warmup_reps, matmul_persistent, a, b)
     warp_specialize = [False, True] if HAS_WARP_SPECIALIZE else [False]
 
     for ws in warp_specialize:
@@ -310,6 +414,7 @@ if __name__ == "__main__":
     b_t = b.T.contiguous()
     c_naive_triton = matmul(a, b)
     c_tma_triton = matmul_tma(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
+    c_persistent_triton = matmul_persistent(a, b)
     c_cublas = cublas_matmul(a, b_t)
 
     if not FP8:
@@ -336,6 +441,17 @@ if __name__ == "__main__":
             print(f"✅ TMA Triton and Torch match. dtype {a.dtype}")
         else:
             print(f"❌ TMA Triton and Torch do not match. dtype {a.dtype}")
+
+    if custom_allclose(c_persistent_triton, c_cublas):
+        print(f"✅ Persistent Triton and Cublas match. dtype {a.dtype}")
+    else:
+        print(f"❌ Persistent Triton and Cublas do not match. dtype {a.dtype}")
+
+    if not FP8:
+        if custom_allclose(c_persistent_triton, c_torch):
+            print(f"✅ Persistent Triton and Torch match. dtype {a.dtype}")
+        else:
+            print(f"❌ Persistent Triton and Torch do not match. dtype {a.dtype}")
 
     proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
     proton.deactivate()
