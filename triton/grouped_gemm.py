@@ -1,3 +1,4 @@
+# TMA works only on Triton 3.4.0+
 import torch
 
 import triton
