@@ -6,6 +6,7 @@ import triton.profiler as proton
 from triton.tools.tensor_descriptor import TensorDescriptor
 
 from contextlib import contextmanager
+from typing import Optional
 
 if torch.cuda.is_available():
     from triton._C.libtriton import nvidia
@@ -342,6 +343,94 @@ def matmul_tma_persistent_kernel(
             accumulator = accumulator.to(dtype)
             c_desc.store([offset_cm, offset_cn], accumulator)
         
+@triton.autotune(
+    configs=matmul_tma_persistent_get_configs(), # no hook - we'll set descriptors in the kernel
+    key=["M", "N", "K", "WARP_SPECIALIZE"],
+)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
+def matmul_tma_with_descriptor_persistent_kernel(
+    a_ptr, b_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    WARP_SPECIALIZE: tl.constexpr,
+    EPILOGUE_SUBTILE: tl.constexpr,
+    NUM_SMS: tl.constexpr,
+):
+    dtype = c_ptr.dtype.element_ty
+    start_pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    
+    k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+    num_tiles = num_pid_m * num_pid_n
+
+    a_desc = tl.make_tensor_descriptor(
+        a_ptr, 
+        shape=[M, K],
+        strides=[stride_am, stride_ak],
+        block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_K],
+    )
+    b_desc = tl.make_tensor_descriptor(
+        b_ptr, 
+        shape=[N, K],
+        strides=[stride_bk, stride_bn],
+        block_shape=[BLOCK_SIZE_N, BLOCK_SIZE_K],
+    )
+    c_desc = tl.make_tensor_descriptor(
+        c_ptr, 
+        shape=[M, N],
+        strides=[stride_cm, stride_cn],
+        block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N] if not EPILOGUE_SUBTILE else [BLOCK_SIZE_M, BLOCK_SIZE_N // 2],
+    )
+
+    # NOTE: There is currently a bug in blackwell pipelining that means it can't handle a value being
+    # used in both the prologue and epilogue, so we duplicate the counters as a work-around.
+    tile_id_c = start_pid - NUM_SMS
+
+    # Enable warp specialization to leverage async warp scheduling in the GPU.
+    # FIXME: This only works on Blackwell right now. On older GPUs, this will
+    # use software pipelining.
+    for tile_id in tl.range(start_pid, num_tiles, NUM_SMS, flatten=True, warp_specialize=WARP_SPECIALIZE):
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        offset_am = pid_m * BLOCK_SIZE_M
+        offset_bn = pid_n * BLOCK_SIZE_N
+
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+        for kk in range(k_tiles):
+            offset_k = kk * BLOCK_SIZE_K
+            a = a_desc.load([offset_am, offset_k])
+            b = b_desc.load([offset_bn, offset_k])
+            accumulator = tl.dot(a, b.T, accumulator)
+        
+        tile_id_c += NUM_SMS
+        pid_m, pid_n = get_group_pids_from_tileid(tile_id_c, num_pid_in_group, num_pid_m, GROUP_SIZE_M)
+        offset_cm = pid_m * BLOCK_SIZE_M
+        offset_cn = pid_n * BLOCK_SIZE_N
+        
+        # Epilogue subtiling is a technique to break our computation and stores into multiple pieces
+        # By subtiling we can reduce shared memory consumption by the epilogue and instead use that
+        # memory to increase our stage count.
+        # In this case we partition the accumulator into 2 BLOCK_SIZE_M x BLOCK_SIZE_N // 2 tensors
+        if EPILOGUE_SUBTILE:
+            acc = tl.reshape(accumulator, (BLOCK_SIZE_M, 2, BLOCK_SIZE_N // 2))
+            acc = tl.permute(acc, (0, 2, 1))
+            acc0, acc1 = tl.split(acc) # By default on last dimension which must have size 2
+            c0 = acc0.to(dtype)
+            c1 = acc1.to(dtype)
+            c_desc.store([offset_cm, offset_cn], c0)
+            c_desc.store([offset_cm, offset_cn + BLOCK_SIZE_N // 2], c1)
+        else:
+            accumulator = accumulator.to(dtype)
+            c_desc.store([offset_cm, offset_cn], accumulator)
+
 def matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -395,6 +484,7 @@ def matmul_persistent(a, b):
     M, K = a.shape
     K, N = b.shape
     dtype = a.dtype
+    
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
@@ -431,6 +521,36 @@ def matmul_tma_persistent(a, b, warp_specialize=False):
         a_desc, b_desc, c_desc,
         M, N, K,
         FP8_OUTPUT=a.dtype == torch.float8_e4m3fn,
+        WARP_SPECIALIZE=warp_specialize,
+        NUM_SMS=NUM_SMS,
+    )
+    return c
+
+def matmul_tma_with_descriptor_persistent(a, b, warp_specialize=False):
+    # Check constraints.
+    assert a.shape[1] == b.shape[1], "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    M, K = a.shape
+    N, K = b.shape
+    dtype = a.dtype
+
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+
+    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+
+    # TMA descriptors require a global memory allocation
+    def alloc_fn(size: int, alignment: int, stream: Optional[int]):
+        return torch.empty(size, device="cuda", dtype=torch.int8)
+
+    triton.set_allocator(alloc_fn)
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
+    matmul_tma_with_descriptor_persistent_kernel[grid](
+        a, b, c,
+        M, N, K,
+        a.stride(0), a.stride(1),
+        b.stride(0), b.stride(1),
+        c.stride(0), c.stride(1),
         WARP_SPECIALIZE=warp_specialize,
         NUM_SMS=NUM_SMS,
     )
@@ -505,12 +625,12 @@ def bench(K, dtype, reps=10000, warmup_reps=10000):
         if HAS_HOST_TENSOR_DESC:
             bench_fn(f"tma{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma(a, b, ws), a, b)
             bench_fn(f"tma_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_persistent(a, b, ws), a, b)
-        # if HAS_TENSOR_DESC:
-        #     bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_descriptor_persistent(a, b, ws), a, b)
+        if HAS_TENSOR_DESC:
+            bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_with_descriptor_persistent(a, b, ws), a, b)
         
 
 if __name__ == "__main__":
-    FP8 = False
+    FP8 = True
     a = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
     b = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
 
@@ -523,6 +643,8 @@ if __name__ == "__main__":
     c_tma_triton = matmul_tma(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
     c_persistent_triton = matmul_persistent(a, b)
     c_tma_persistent_triton = matmul_tma_persistent(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
+    c_tma_with_descriptor_persistent_triton = matmul_tma_with_descriptor_persistent(a, b_t, warp_specialize=HAS_WARP_SPECIALIZE)
+
     c_cublas = cublas_matmul(a, b_t)
 
     if not FP8:
@@ -571,6 +693,17 @@ if __name__ == "__main__":
             print(f"✅ TMA Persistent Triton and Torch match. dtype {a.dtype}")
         else:
             print(f"❌ TMA Persistent Triton and Torch do not match. dtype {a.dtype}")
+
+    if custom_allclose(c_tma_with_descriptor_persistent_triton, c_cublas):
+        print(f"✅ TMA with descriptor Persistent Triton and Cublas match. dtype {a.dtype}")
+    else:
+        print(f"❌ TMA with descriptor Persistent Triton and Cublas do not match. dtype {a.dtype}")
+    
+    if not FP8:
+        if custom_allclose(c_tma_with_descriptor_persistent_triton, c_torch):
+            print(f"✅ TMA with descriptor Persistent Triton and Torch match. dtype {a.dtype}")
+        else:
+            print(f"❌ TMA with descriptor Persistent Triton and Torch do not match. dtype {a.dtype}")
 
     proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
     proton.deactivate()
