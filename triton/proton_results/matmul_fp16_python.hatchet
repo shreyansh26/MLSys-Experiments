@@ -1,0 +1,700 @@
+
+[
+    {
+        "children": [
+            {
+                "children": [
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:_enter_scope@46",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {
+                                                            "bytes": 1677721600000,
+                                                            "flops16": 1.37438953472e+15
+                                                        }
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:__enter__@56",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:cublas_matmul@568",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    },
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [],
+                                                "frame": {
+                                                    "name": "sm90_xmma_gemm_f16f16_f16f32_f32_tn_n_tilesize128x128x64_warpgroupsize1x1x1_execute_segment_k_off_kernel__5x_cublas",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {
+                                                    "count": 10000,
+                                                    "device_id": "0",
+                                                    "device_type": "CUDA",
+                                                    "time (ns)": 2207061948
+                                                }
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:cublas_matmul@570",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@616",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:_enter_scope@46",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {
+                                                            "bytes": 1677721600000,
+                                                            "flops16": 1.37438953472e+15
+                                                        }
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:__enter__@56",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:torch_matmul@579",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    },
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [],
+                                                "frame": {
+                                                    "name": "sm90_xmma_gemm_f16f16_f16f32_f32_tn_n_tilesize128x128x64_warpgroupsize1x1x1_execute_segment_k_off_kernel__5x_cublas",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {
+                                                    "count": 10000,
+                                                    "device_id": "0",
+                                                    "device_type": "CUDA",
+                                                    "time (ns)": 2209860892
+                                                }
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:torch_matmul@581",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@618",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [
+                                                            {
+                                                                "children": [
+                                                                    {
+                                                                        "children": [
+                                                                            {
+                                                                                "children": [
+                                                                                    {
+                                                                                        "children": [
+                                                                                            {
+                                                                                                "children": [],
+                                                                                                "frame": {
+                                                                                                    "name": "matmul_naive_kernel [M=8192, N=8192, K=1024]",
+                                                                                                    "type": "function"
+                                                                                                },
+                                                                                                "metrics": {
+                                                                                                    "bytes": 1677721600000,
+                                                                                                    "count": 10000,
+                                                                                                    "device_id": "0",
+                                                                                                    "device_type": "CUDA",
+                                                                                                    "flops16": 1.37438953472e+15,
+                                                                                                    "time (ns)": 11797692375
+                                                                                                }
+                                                                                            }
+                                                                                        ],
+                                                                                        "frame": {
+                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:enter_scope@112",
+                                                                                            "type": "function"
+                                                                                        },
+                                                                                        "metrics": {}
+                                                                                    }
+                                                                                ],
+                                                                                "frame": {
+                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/hook.py:enter@19",
+                                                                                    "type": "function"
+                                                                                },
+                                                                                "metrics": {}
+                                                                            }
+                                                                        ],
+                                                                        "frame": {
+                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:__call__@651",
+                                                                            "type": "function"
+                                                                        },
+                                                                        "metrics": {}
+                                                                    }
+                                                                ],
+                                                                "frame": {
+                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:run@600",
+                                                                    "type": "function"
+                                                                },
+                                                                "metrics": {}
+                                                            }
+                                                        ],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/autotuner.py:run@251",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {}
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:<lambda>@374",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:matmul@445",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@619",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [
+                                                            {
+                                                                "children": [
+                                                                    {
+                                                                        "children": [
+                                                                            {
+                                                                                "children": [
+                                                                                    {
+                                                                                        "children": [
+                                                                                            {
+                                                                                                "children": [],
+                                                                                                "frame": {
+                                                                                                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=1024]",
+                                                                                                    "type": "function"
+                                                                                                },
+                                                                                                "metrics": {
+                                                                                                    "bytes": 1677721600000,
+                                                                                                    "count": 10000,
+                                                                                                    "device_id": "0",
+                                                                                                    "device_type": "CUDA",
+                                                                                                    "flops16": 1.37438953472e+15,
+                                                                                                    "time (ns)": 2760915819
+                                                                                                }
+                                                                                            }
+                                                                                        ],
+                                                                                        "frame": {
+                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:enter_scope@112",
+                                                                                            "type": "function"
+                                                                                        },
+                                                                                        "metrics": {}
+                                                                                    }
+                                                                                ],
+                                                                                "frame": {
+                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/hook.py:enter@19",
+                                                                                    "type": "function"
+                                                                                },
+                                                                                "metrics": {}
+                                                                            }
+                                                                        ],
+                                                                        "frame": {
+                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:__call__@651",
+                                                                            "type": "function"
+                                                                        },
+                                                                        "metrics": {}
+                                                                    }
+                                                                ],
+                                                                "frame": {
+                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:run@600",
+                                                                    "type": "function"
+                                                                },
+                                                                "metrics": {}
+                                                            }
+                                                        ],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/autotuner.py:run@251",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {}
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:<lambda>@374",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:matmul_persistent@492",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@620",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [
+                                                            {
+                                                                "children": [
+                                                                    {
+                                                                        "children": [
+                                                                            {
+                                                                                "children": [
+                                                                                    {
+                                                                                        "children": [
+                                                                                            {
+                                                                                                "children": [
+                                                                                                    {
+                                                                                                        "children": [
+                                                                                                            {
+                                                                                                                "children": [],
+                                                                                                                "frame": {
+                                                                                                                    "name": "matmul_tma_kernel [M=8192, N=8192, K=1024]",
+                                                                                                                    "type": "function"
+                                                                                                                },
+                                                                                                                "metrics": {
+                                                                                                                    "bytes": 1677721600000,
+                                                                                                                    "count": 10000,
+                                                                                                                    "device_id": "0",
+                                                                                                                    "device_type": "CUDA",
+                                                                                                                    "flops16": 1.37438953472e+15,
+                                                                                                                    "time (ns)": 2864594196
+                                                                                                                }
+                                                                                                            }
+                                                                                                        ],
+                                                                                                        "frame": {
+                                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:enter_scope@112",
+                                                                                                            "type": "function"
+                                                                                                        },
+                                                                                                        "metrics": {}
+                                                                                                    }
+                                                                                                ],
+                                                                                                "frame": {
+                                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/hook.py:enter@19",
+                                                                                                    "type": "function"
+                                                                                                },
+                                                                                                "metrics": {}
+                                                                                            }
+                                                                                        ],
+                                                                                        "frame": {
+                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:inner@614",
+                                                                                            "type": "function"
+                                                                                        },
+                                                                                        "metrics": {}
+                                                                                    }
+                                                                                ],
+                                                                                "frame": {
+                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:__call__@651",
+                                                                                    "type": "function"
+                                                                                },
+                                                                                "metrics": {}
+                                                                            }
+                                                                        ],
+                                                                        "frame": {
+                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:run@600",
+                                                                            "type": "function"
+                                                                        },
+                                                                        "metrics": {}
+                                                                    }
+                                                                ],
+                                                                "frame": {
+                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/autotuner.py:run@251",
+                                                                    "type": "function"
+                                                                },
+                                                                "metrics": {}
+                                                            }
+                                                        ],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:<lambda>@374",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {}
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:matmul_tma@471",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:<lambda>@626",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@626",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [
+                                                            {
+                                                                "children": [
+                                                                    {
+                                                                        "children": [
+                                                                            {
+                                                                                "children": [
+                                                                                    {
+                                                                                        "children": [
+                                                                                            {
+                                                                                                "children": [
+                                                                                                    {
+                                                                                                        "children": [
+                                                                                                            {
+                                                                                                                "children": [],
+                                                                                                                "frame": {
+                                                                                                                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=1024]",
+                                                                                                                    "type": "function"
+                                                                                                                },
+                                                                                                                "metrics": {
+                                                                                                                    "bytes": 1677721600000,
+                                                                                                                    "count": 10000,
+                                                                                                                    "device_id": "0",
+                                                                                                                    "device_type": "CUDA",
+                                                                                                                    "flops16": 1.37438953472e+15,
+                                                                                                                    "time (ns)": 2404854977
+                                                                                                                }
+                                                                                                            }
+                                                                                                        ],
+                                                                                                        "frame": {
+                                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:enter_scope@112",
+                                                                                                            "type": "function"
+                                                                                                        },
+                                                                                                        "metrics": {}
+                                                                                                    }
+                                                                                                ],
+                                                                                                "frame": {
+                                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/hook.py:enter@19",
+                                                                                                    "type": "function"
+                                                                                                },
+                                                                                                "metrics": {}
+                                                                                            }
+                                                                                        ],
+                                                                                        "frame": {
+                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:inner@614",
+                                                                                            "type": "function"
+                                                                                        },
+                                                                                        "metrics": {}
+                                                                                    }
+                                                                                ],
+                                                                                "frame": {
+                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:__call__@651",
+                                                                                    "type": "function"
+                                                                                },
+                                                                                "metrics": {}
+                                                                            }
+                                                                        ],
+                                                                        "frame": {
+                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:run@600",
+                                                                            "type": "function"
+                                                                        },
+                                                                        "metrics": {}
+                                                                    }
+                                                                ],
+                                                                "frame": {
+                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/autotuner.py:run@251",
+                                                                    "type": "function"
+                                                                },
+                                                                "metrics": {}
+                                                            }
+                                                        ],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:<lambda>@374",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {}
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:matmul_tma_persistent@520",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:<lambda>@627",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@627",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [
+                                            {
+                                                "children": [
+                                                    {
+                                                        "children": [
+                                                            {
+                                                                "children": [
+                                                                    {
+                                                                        "children": [
+                                                                            {
+                                                                                "children": [
+                                                                                    {
+                                                                                        "children": [
+                                                                                            {
+                                                                                                "children": [
+                                                                                                    {
+                                                                                                        "children": [],
+                                                                                                        "frame": {
+                                                                                                            "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=1024]",
+                                                                                                            "type": "function"
+                                                                                                        },
+                                                                                                        "metrics": {
+                                                                                                            "bytes": 1677721600000,
+                                                                                                            "count": 10000,
+                                                                                                            "device_id": "0",
+                                                                                                            "device_type": "CUDA",
+                                                                                                            "flops16": 1.37438953472e+15,
+                                                                                                            "time (ns)": 2410862459
+                                                                                                        }
+                                                                                                    }
+                                                                                                ],
+                                                                                                "frame": {
+                                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/scope.py:enter_scope@112",
+                                                                                                    "type": "function"
+                                                                                                },
+                                                                                                "metrics": {}
+                                                                                            }
+                                                                                        ],
+                                                                                        "frame": {
+                                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/profiler/hook.py:enter@19",
+                                                                                            "type": "function"
+                                                                                        },
+                                                                                        "metrics": {}
+                                                                                    }
+                                                                                ],
+                                                                                "frame": {
+                                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/backends/nvidia/driver.py:__call__@651",
+                                                                                    "type": "function"
+                                                                                },
+                                                                                "metrics": {}
+                                                                            }
+                                                                        ],
+                                                                        "frame": {
+                                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:run@600",
+                                                                            "type": "function"
+                                                                        },
+                                                                        "metrics": {}
+                                                                    }
+                                                                ],
+                                                                "frame": {
+                                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/autotuner.py:run@251",
+                                                                    "type": "function"
+                                                                },
+                                                                "metrics": {}
+                                                            }
+                                                        ],
+                                                        "frame": {
+                                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton-src/python/triton/runtime/jit.py:<lambda>@374",
+                                                            "type": "function"
+                                                        },
+                                                        "metrics": {}
+                                                    }
+                                                ],
+                                                "frame": {
+                                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:matmul_tma_with_descriptor_persistent@548",
+                                                    "type": "function"
+                                                },
+                                                "metrics": {}
+                                            }
+                                        ],
+                                        "frame": {
+                                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:<lambda>@629",
+                                            "type": "function"
+                                        },
+                                        "metrics": {}
+                                    }
+                                ],
+                                "frame": {
+                                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench_fn@604",
+                                    "type": "function"
+                                },
+                                "metrics": {}
+                            }
+                        ],
+                        "frame": {
+                            "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:bench@629",
+                            "type": "function"
+                        },
+                        "metrics": {}
+                    }
+                ],
+                "frame": {
+                    "name": "/mnt/ssd1/shreyansh/home_dir/misc_experiments/triton/persistent_matmul.py:<module>@711",
+                    "type": "function"
+                },
+                "metrics": {}
+            }
+        ],
+        "frame": {
+            "name": "ROOT",
+            "type": "function"
+        },
+        "metrics": {
+            "bytes": 0,
+            "count": 0,
+            "flops16": 0,
+            "time (ns)": 0
+        }
+    },
+    {
+        "CUDA": {
+            "0": {
+                "arch": "90",
+                "bus_width": 5120,
+                "clock_rate": 1980000,
+                "memory_clock_rate": 2619000,
+                "num_sms": 132
+            }
+        }
+    }
+]
