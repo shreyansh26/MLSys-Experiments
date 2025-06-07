@@ -24,11 +24,22 @@ def supports_tma():
 def supports_ws():
     return is_cuda() and torch.cuda.get_device_capability()[0] >= 10
 
+def unpack_grid(grid):
+    if len(grid) == 1:
+        return grid[0], 1, 1
+    if len(grid) == 2:
+        return grid[0], grid[1], 1
+    if len(grid) == 3:
+        return grid[0], grid[1], grid[2]
+    
 def _matmul_launch_metadata(grid, kernel, args):
     ret = {}
+    grid_x, grid_y, grid_z = unpack_grid(grid)
+    shared_memory = kernel.shared
     M, N, K, WS = args["M"], args["N"], args["K"], args.get("WARP_SPECIALIZE", False)
+    NUM_WARPS, NUM_STAGES, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K = kernel.num_warps, kernel.num_stages, args["BLOCK_SIZE_M"], args["BLOCK_SIZE_N"], args["BLOCK_SIZE_K"]
     ws_str = "_ws" if WS else ""
-    ret["name"] = f"{kernel.name}{ws_str} [M={M}, N={N}, K={K}]"
+    ret["name"] = f"{kernel.name}{ws_str}_<grid:{grid_x}x{grid_y}x{grid_z}>_<shared_memory:{shared_memory}>_<warps:{NUM_WARPS}>_<stages:{NUM_STAGES}> [M={M}, N={N}, K={K}, BM={BLOCK_SIZE_M}, BN={BLOCK_SIZE_N}, BK={BLOCK_SIZE_K}]"
     if "c_ptr" in args:
         bytes_per_elem = args["c_ptr"].element_size()
     else:
