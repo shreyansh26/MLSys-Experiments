@@ -705,7 +705,7 @@ if __name__ == "__main__":
         else:
             print(f"❌ TMA with descriptor Persistent Triton and Torch do not match. dtype {a.dtype}")
 
-    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton")
+    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton") # Add context="python" to not see underlying cublas kernels being invoked
     proton.deactivate()
     for K in range(1024, 8192 + 1, 1024):
         bench(K, a.dtype)
