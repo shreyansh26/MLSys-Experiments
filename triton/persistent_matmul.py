@@ -630,7 +630,7 @@ def bench(K, dtype, reps=10000, warmup_reps=10000):
         
 
 if __name__ == "__main__":
-    FP8 = True
+    FP8 = False
     a = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
     b = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
 
@@ -705,7 +705,7 @@ if __name__ == "__main__":
         else:
             print(f"❌ TMA with descriptor Persistent Triton and Torch do not match. dtype {a.dtype}")
 
-    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton") # Add context="python" to not see underlying cublas kernels being invoked
+    proton.start("proton_results/matmul_fp8" if FP8 else "proton_results/matmul_fp16", hook="triton") # Add context="python" to see all calls
     proton.deactivate()
     for K in range(1024, 8192 + 1, 1024):
         bench(K, a.dtype)
