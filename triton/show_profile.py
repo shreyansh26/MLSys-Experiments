@@ -1,7 +1,7 @@
 import triton.profiler.viewer as proton_viewer
 
 def show_profile(precision, profile_name):
-    metric_names = ["time/ms"] # Can also be - `gbyte/s` or `byte/s` - Supports at most two metrics while showing the tree
+    metric_names = ["time/ms"] # Can also be - `gbyte/s` or `byte/s` or `util` (roofline utilization) - Supports at most two metrics while showing the tree
     if precision == 'fp8':
         metric_names = ["tflop8/s"] + metric_names
     elif precision == 'fp16':
