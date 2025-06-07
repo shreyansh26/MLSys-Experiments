@@ -14,7 +14,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 1179366172
+                            "time (ns)": 1177807189
                         }
                     }
                 ],
@@ -39,7 +39,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 2207840682
+                            "time (ns)": 2209545511
                         }
                     }
                 ],
@@ -64,7 +64,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 3354741305
+                            "time (ns)": 3353974141
                         }
                     }
                 ],
@@ -89,7 +89,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 4352412787
+                            "time (ns)": 4341001903
                         }
                     }
                 ],
@@ -114,7 +114,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 5446008842
+                            "time (ns)": 5423798246
                         }
                     }
                 ],
@@ -139,7 +139,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 6518300806
+                            "time (ns)": 6539202947
                         }
                     }
                 ],
@@ -164,7 +164,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 7613720236
+                            "time (ns)": 7578443654
                         }
                     }
                 ],
@@ -189,7 +189,7 @@
                             "count": 10000,
                             "device_id": "0",
                             "device_type": "CUDA",
-                            "time (ns)": 8705745154
+                            "time (ns)": 8689135206
                         }
                     }
                 ],
@@ -205,97 +205,7 @@
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=1024]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 838860800000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.37438953472e+15,
-                    "time (ns)": 11370964227
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=2048]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1006632960000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 2.74877906944e+15,
-                    "time (ns)": 11795544376
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=3072]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1174405120000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 4.12316860416e+15,
-                    "time (ns)": 12273319960
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=4096]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1342177280000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 5.49755813888e+15,
-                    "time (ns)": 12784558796
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=5120]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1509949440000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 6.8719476736e+15,
-                    "time (ns)": 13250807690
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=6144]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1677721600000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 8.24633720832e+15,
-                    "time (ns)": 14054509981
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=7168]",
+                    "name": "matmul_naive_kernel_<grid:2048x1x1>_<shared_memory:147456>_<warps:8>_<stages:3> [M=8192, N=8192, K=7168, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -304,103 +214,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 9.62072674304e+15,
-                    "time (ns)": 14877004775
+                    "time (ns)": 14841879156
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_naive_kernel [M=8192, N=8192, K=8192]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 2013265920000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.099511627776e+16,
-                    "time (ns)": 15762005105
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=1024]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 838860800000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.37438953472e+15,
-                    "time (ns)": 1281772958
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=2048]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1006632960000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 2.74877906944e+15,
-                    "time (ns)": 2305743765
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=3072]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1174405120000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 4.12316860416e+15,
-                    "time (ns)": 3416598919
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=4096]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1342177280000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 5.49755813888e+15,
-                    "time (ns)": 4419294918
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=5120]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1509949440000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 6.8719476736e+15,
-                    "time (ns)": 5526669280
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=6144]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:131072>_<warps:4>_<stages:4> [M=8192, N=8192, K=6144, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -409,88 +229,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 8.24633720832e+15,
-                    "time (ns)": 6538714431
+                    "time (ns)": 14053653299
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=7168]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1845493760000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 9.62072674304e+15,
-                    "time (ns)": 7640368068
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_persistent_kernel [M=8192, N=8192, K=8192]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 2013265920000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.099511627776e+16,
-                    "time (ns)": 8667128045
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=1024]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 838860800000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.37438953472e+15,
-                    "time (ns)": 1319855593
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=2048]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1006632960000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 2.74877906944e+15,
-                    "time (ns)": 2477843676
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=3072]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1174405120000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 4.12316860416e+15,
-                    "time (ns)": 3516453832
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=4096]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:163840>_<warps:4>_<stages:5> [M=8192, N=8192, K=4096, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -499,13 +244,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 5.49755813888e+15,
-                    "time (ns)": 4546005973
+                    "time (ns)": 12788310550
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=5120]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:163840>_<warps:4>_<stages:5> [M=8192, N=8192, K=5120, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -514,43 +259,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 6.8719476736e+15,
-                    "time (ns)": 5599533430
+                    "time (ns)": 13265674661
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=6144]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1677721600000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 8.24633720832e+15,
-                    "time (ns)": 6682170470
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=7168]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1845493760000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 9.62072674304e+15,
-                    "time (ns)": 7722239660
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_kernel [M=8192, N=8192, K=8192]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:163840>_<warps:4>_<stages:5> [M=8192, N=8192, K=8192, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -559,13 +274,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.099511627776e+16,
-                    "time (ns)": 8771603943
+                    "time (ns)": 15802029231
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=1024]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:98304>_<warps:4>_<stages:3> [M=8192, N=8192, K=1024, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -574,13 +289,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.37438953472e+15,
-                    "time (ns)": 1164584363
+                    "time (ns)": 11370754687
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=2048]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:98304>_<warps:4>_<stages:3> [M=8192, N=8192, K=2048, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -589,13 +304,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 2.74877906944e+15,
-                    "time (ns)": 2157440317
+                    "time (ns)": 11803607645
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=3072]",
+                    "name": "matmul_naive_kernel_<grid:4096x1x1>_<shared_memory:98304>_<warps:4>_<stages:3> [M=8192, N=8192, K=3072, BM=128, BN=128, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -604,88 +319,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 4.12316860416e+15,
-                    "time (ns)": 3202698262
+                    "time (ns)": 12276198719
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=4096]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1342177280000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 5.49755813888e+15,
-                    "time (ns)": 4249622789
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=5120]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1509949440000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 6.8719476736e+15,
-                    "time (ns)": 5255138405
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=6144]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1677721600000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 8.24633720832e+15,
-                    "time (ns)": 6279727818
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=7168]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1845493760000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 9.62072674304e+15,
-                    "time (ns)": 7424009823
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_persistent_kernel [M=8192, N=8192, K=8192]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 2013265920000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 1.099511627776e+16,
-                    "time (ns)": 8353585181
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=1024]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:182272>_<warps:8>_<stages:3> [M=8192, N=8192, K=1024, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -694,13 +334,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.37438953472e+15,
-                    "time (ns)": 1194748358
+                    "time (ns)": 1284882030
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=2048]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:182272>_<warps:8>_<stages:3> [M=8192, N=8192, K=2048, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -709,28 +349,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 2.74877906944e+15,
-                    "time (ns)": 2177487305
+                    "time (ns)": 2306468187
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=3072]",
-                    "type": "function"
-                },
-                "metrics": {
-                    "bytes": 1174405120000,
-                    "count": 10000,
-                    "device_id": "0",
-                    "device_type": "CUDA",
-                    "flops8": 4.12316860416e+15,
-                    "time (ns)": 3225990768
-                }
-            },
-            {
-                "children": [],
-                "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=4096]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:182272>_<warps:8>_<stages:3> [M=8192, N=8192, K=4096, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -739,13 +364,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 5.49755813888e+15,
-                    "time (ns)": 4308816613
+                    "time (ns)": 4420078076
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=5120]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:182272>_<warps:8>_<stages:3> [M=8192, N=8192, K=5120, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -754,13 +379,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 6.8719476736e+15,
-                    "time (ns)": 5357678734
+                    "time (ns)": 5484502054
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=6144]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:182272>_<warps:8>_<stages:3> [M=8192, N=8192, K=6144, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -769,13 +394,28 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 8.24633720832e+15,
-                    "time (ns)": 6455204471
+                    "time (ns)": 6519859843
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=7168]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:231424>_<warps:8>_<stages:4> [M=8192, N=8192, K=3072, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3423221693
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:231424>_<warps:8>_<stages:4> [M=8192, N=8192, K=7168, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -784,13 +424,13 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 9.62072674304e+15,
-                    "time (ns)": 7382198263
+                    "time (ns)": 7620506603
                 }
             },
             {
                 "children": [],
                 "frame": {
-                    "name": "matmul_tma_with_descriptor_persistent_kernel [M=8192, N=8192, K=8192]",
+                    "name": "matmul_persistent_kernel_<grid:132x1x1>_<shared_memory:231424>_<warps:8>_<stages:4> [M=8192, N=8192, K=8192, BM=128, BN=256, BK=128]",
                     "type": "function"
                 },
                 "metrics": {
@@ -799,7 +439,367 @@
                     "device_id": "0",
                     "device_type": "CUDA",
                     "flops8": 1.099511627776e+16,
-                    "time (ns)": 8430450764
+                    "time (ns)": 8665036686
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:147480>_<warps:8>_<stages:3> [M=8192, N=8192, K=7168, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1845493760000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 9.62072674304e+15,
+                    "time (ns)": 7757778686
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=2048, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1006632960000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 2.74877906944e+15,
+                    "time (ns)": 2477525686
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=3072, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3511725514
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=4096, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1342177280000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 5.49755813888e+15,
+                    "time (ns)": 4549550901
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=5120, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1509949440000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 6.8719476736e+15,
+                    "time (ns)": 5593308743
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=6144, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1677721600000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 8.24633720832e+15,
+                    "time (ns)": 6656110527
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:2048x1x1>_<shared_memory:196640>_<warps:8>_<stages:4> [M=8192, N=8192, K=8192, BM=256, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 2013265920000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.099511627776e+16,
+                    "time (ns)": 8759740658
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_kernel_<grid:4096x1x1>_<shared_memory:98328>_<warps:4>_<stages:3> [M=8192, N=8192, K=1024, BM=128, BN=128, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 838860800000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.37438953472e+15,
+                    "time (ns)": 1317419698
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=2048, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1006632960000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 2.74877906944e+15,
+                    "time (ns)": 2150983132
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=3072, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3194119022
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=5120, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1509949440000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 6.8719476736e+15,
+                    "time (ns)": 5275690507
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=6144, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1677721600000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 8.24633720832e+15,
+                    "time (ns)": 6295818628
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:213024>_<warps:8>_<stages:4> [M=8192, N=8192, K=4096, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1342177280000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 5.49755813888e+15,
+                    "time (ns)": 4253426226
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:213024>_<warps:8>_<stages:4> [M=8192, N=8192, K=8192, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 2013265920000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.099511627776e+16,
+                    "time (ns)": 8371718422
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=1024, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 838860800000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.37438953472e+15,
+                    "time (ns)": 1164906851
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=7168, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1845493760000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 9.62072674304e+15,
+                    "time (ns)": 7308385522
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:163864>_<warps:8>_<stages:3> [M=8192, N=8192, K=6144, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1677721600000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 8.24633720832e+15,
+                    "time (ns)": 6391851644
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:163864>_<warps:8>_<stages:3> [M=8192, N=8192, K=7168, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1845493760000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 9.62072674304e+15,
+                    "time (ns)": 7398849293
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=2048, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1006632960000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 2.74877906944e+15,
+                    "time (ns)": 2176087005
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:180248>_<warps:8>_<stages:3> [M=8192, N=8192, K=8192, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 2013265920000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.099511627776e+16,
+                    "time (ns)": 8415991860
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=1024, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 838860800000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 1.37438953472e+15,
+                    "time (ns)": 1194503729
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=3072, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1174405120000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 4.12316860416e+15,
+                    "time (ns)": 3267893539
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=4096, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1342177280000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 5.49755813888e+15,
+                    "time (ns)": 4310272620
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_tma_with_descriptor_persistent_kernel_<grid:132x1x1>_<shared_memory:229408>_<warps:8>_<stages:4> [M=8192, N=8192, K=5120, BM=128, BN=256, BK=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 1509949440000,
+                    "count": 10000,
+                    "device_id": "0",
+                    "device_type": "CUDA",
+                    "flops8": 6.8719476736e+15,
+                    "time (ns)": 5360731784
                 }
             }
         ],
