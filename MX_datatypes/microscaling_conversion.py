@@ -102,6 +102,7 @@ def float32_to_mx(
     payload = _quantise_elem(t2 / scale, fmt)
 
     # Step (3) – pack scale as unsigned E8M0 byte
+    print(scale)
     scale_e8m0 = (shared_exp + _E8M0_BIAS).to(torch.uint8)
 
     # Undo padding & axis move
@@ -121,3 +122,4 @@ if __name__ == "__main__":
 
     # print(x)
     # print(data)
+    # print(scale)
