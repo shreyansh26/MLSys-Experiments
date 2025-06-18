@@ -81,7 +81,7 @@ float profile_transpose_implementation(std::function<void(T*, T*, unsigned int, 
     CHECK_CUDA_ERROR(cudaMalloc(&d_matrix_transposed, matrix_size * sizeof(T)));
     CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
 
-    std::function<void(cudaStream_t)> const transpose_function_wrapped{std::bind(transpose_function, d_matrix, d_matrix_transposed, M, N, std::placeholders::_1)}; // stream to be suppled later hence 1 placeholder
+    std::function<void(cudaStream_t)> const transpose_function_wrapped{std::bind(transpose_function, d_matrix, d_matrix_transposed, M, N, std::placeholders::_1)}; // stream to be supplied later hence 1 placeholder
     float const transpose_function_latency{measure_performance(transpose_function_wrapped, stream, num_repeats, num_warmups)};
     CHECK_CUDA_ERROR(cudaFree(d_matrix));
     CHECK_CUDA_ERROR(cudaFree(d_matrix_transposed));
