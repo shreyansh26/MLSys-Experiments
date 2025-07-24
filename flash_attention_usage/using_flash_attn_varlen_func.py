@@ -36,7 +36,6 @@ out_flat = flash_attn_varlen_func(
 out_flash = pad_input(out_flat, idx_q, B, q_seq_len)                      # back to (B,S,H,D)
 print("out_flash.shape:\t\t", out_flash.shape)      # (2, 2048, 16, 64)
 
-# out_naive = naive_varlen(q, k, v, lengths) # Works correctly
 out_naive = naive_causal_varlen_vectorized_attention(q, k, v, q_valid_mask, k_valid_mask)
 print("out_naive.shape:\t\t", out_naive.shape)      # (2, 2048, 16, 64)
 
