@@ -1,3 +1,4 @@
+# For inference - does not support backward pass
 import torch
 from flash_attn import flash_attn_with_kvcache
 from naive_attention import naive_causal_attention
