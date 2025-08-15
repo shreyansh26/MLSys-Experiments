@@ -155,12 +155,24 @@ if __name__ == "__main__":
     time_end = time.time()
     print(f"Tokenizer loading time: {time_end - time_start} seconds")
 
-    prompt = "Hello, who are you?"
-    tokens = tokenizer.encode(prompt, bos=True, eos=False)
-    input_ids = torch.tensor(tokens).unsqueeze(0).to("cuda")
+    prompt = ["Hello, who are you?", "What is the capital of France?"]
+    inp_list = []
+    inp_lens = []
+    for p in prompt:
+        tokens = tokenizer.encode(p, bos=True, eos=False)
+        inp_list.append(torch.tensor(tokens))
+        inp_lens.append(len(tokens))
+    
+    max_len = max(inp_lens)
+    for i in range(len(inp_list)):
+        inp_list[i] = torch.nn.functional.pad(inp_list[i], (0, max_len - inp_lens[i]), value=tokenizer.eos_id)
+    inp_list = torch.stack(inp_list).to("cuda")
+    inp_lens = torch.tensor(inp_lens).to("cuda")
 
     time_start = time.time()
-    output = generate(model, input_ids, max_new_tokens=100)
+    output = generate(model, inp_list, max_new_tokens=100)
     time_end = time.time()
     print(f"Generation time: {time_end - time_start} seconds")
     print(tokenizer.decode(output[0].tolist()))
+    print("="*100)
+    print(tokenizer.decode(output[1].tolist()))
