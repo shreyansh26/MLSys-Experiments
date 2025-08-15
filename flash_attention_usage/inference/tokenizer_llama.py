@@ -94,6 +94,7 @@ class Tokenizer:
         self.stop_tokens = [
             self.special_tokens["<|begin_of_text|>"],
             self.special_tokens["<|end_of_text|>"],
+            self.special_tokens["<|eot_id|>"],          # add end of turn as stop token
         ]
 
     def encode(
@@ -152,9 +153,14 @@ class Tokenizer:
             t.append(self.eos_id)
         return t
 
-    def decode(self, t: Sequence[int]) -> str:
+    def decode(self, t: Sequence[int], skip_special_tokens: bool = False) -> str:
         # Typecast is safe here. Tiktoken doesn't do anything list-related with the sequence.
-        return self.model.decode(cast(List[int], t))
+        decoded_text = self.model.decode(cast(List[int], t))
+        if skip_special_tokens:
+            for token in self.special_tokens.keys():
+                decoded_text = decoded_text.replace(token, "")
+            decoded_text = decoded_text.strip()
+        return decoded_text
 
     @staticmethod
     def _split_whitespaces_or_nonwhitespaces(
@@ -192,3 +198,18 @@ if __name__ == "__main__":
     hf_tokens = hf_tokenizer.encode(prompt)
     print(tokens)
     print(hf_tokens)
+
+    messages = {
+        "role": "user",
+        "content": "Hello, who are you?"
+    }
+    messages = [messages]
+    print(messages)
+    chat_message = hf_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    print(chat_message)
+    hf_tokenizer.pad_token_id = hf_tokenizer.eos_token_id
+    encoded = hf_tokenizer.encode(chat_message, padding="max_length", max_length=100)
+    print(encoded)
+    print("="*100)
+    decoded = hf_tokenizer.decode(encoded, skip_special_tokens=False)
+    print(decoded)
