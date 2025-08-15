@@ -7,6 +7,20 @@ from tokenizer_llama import Tokenizer
 from dataclasses import dataclass
 from chat_format import render
 
+@dataclass
+class ModelArgs:
+    dim: int = None
+    n_layers: int = None
+    n_heads: int = None
+    n_kv_heads: int = None
+    vocab_size: int = None
+    ffn_dim_multiplier: float = None
+    multiple_of: int = None
+    norm_eps: float = None
+    rope_theta: float = None
+    use_scaled_rope: bool = None
+    max_seq_len: int = None
+    
 def load_model(model_path, model_args):
     with torch.device("meta"):
         model = Transformer(model_args)
@@ -107,20 +121,6 @@ def generate(
             break
 
     return input_ids
-
-@dataclass
-class ModelArgs:
-    dim: int = None
-    n_layers: int = None
-    n_heads: int = None
-    n_kv_heads: int = None
-    vocab_size: int = None
-    ffn_dim_multiplier: float = None
-    multiple_of: int = None
-    norm_eps: float = None
-    rope_theta: float = None
-    use_scaled_rope: bool = None
-    max_seq_len: int = None
 
 def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
     converted_message = render(system_prompt, user_prompt)
