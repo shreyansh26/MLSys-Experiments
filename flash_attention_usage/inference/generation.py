@@ -7,6 +7,27 @@ from tokenizer_llama import Tokenizer
 from dataclasses import dataclass
 from chat_format import render
 
+def load_model(model_path, model_args):
+    with torch.device("meta"):
+        model = Transformer(model_args)
+    
+    model = model.to_empty(device="cpu")
+    state_dict = torch.load(f"{model_path}/consolidated.00.pth", weights_only=True, mmap=True)
+    model.load_state_dict(state_dict, assign=True)
+
+    # Load freqs_cis separately
+    with torch.no_grad():
+        model.freqs_cis = model._precompute_freqs_cis()
+    return model
+
+def load_model2(model_path, model_args):
+    model = Transformer(model_args)
+    
+    state_dict = torch.load(f"{model_path}/consolidated.00.pth", weights_only=True, mmap=True)
+    model.load_state_dict(state_dict, assign=True)
+
+    return model
+
 def multinomial_sample_one(
     probs: torch.Tensor, rng: Optional[torch.Generator] = None
 ) -> torch.Tensor:
@@ -49,8 +70,10 @@ def generate_next_token(
 def generate(
     model,
     input_ids: torch.Tensor,
+    input_text_mask: torch.Tensor,
+    min_prompt_len: int,
+    max_output_len: int,
     *,
-    max_new_tokens: int,
     temperature: float = 0.0,
     top_k: Optional[int] = None,
     seed: Optional[int] = None,
@@ -63,44 +86,27 @@ def generate(
     if seed is not None:
         rng = torch.Generator(input_ids.device).manual_seed(seed)
 
-    generated_tokens = input_ids.clone()
-    prompt_len = input_ids.shape[1]
-    curr_idx = prompt_len
+    stop_tokens = torch.tensor(list(tokenizer.stop_tokens), device="cuda")
+    eos_reached = torch.tensor([False] * input_ids.shape[0], device="cuda")
 
-    for curr_idx in range(prompt_len, prompt_len + max_new_tokens):
+    for curr_idx in range(min_prompt_len, max_output_len):
         next_token = generate_next_token(
             model,
-            x=generated_tokens,
+            x=input_ids[:, :curr_idx],
             temperature=temperature,
             top_k=top_k,
             rng=rng,
             curr_idx=curr_idx,
         )
+        next_token = torch.where(input_text_mask[:, curr_idx], input_ids[:, curr_idx], next_token.squeeze(-1))
+        input_ids[:, curr_idx] = next_token
+        eos_reached |= (~input_text_mask[:, curr_idx]) & (torch.isin(next_token, stop_tokens))
 
-        generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
+        if all(eos_reached):
+            print("EOS reached")
+            break
 
-    return generated_tokens
-
-def load_model(model_path, model_args):
-    with torch.device("meta"):
-        model = Transformer(model_args)
-    
-    model = model.to_empty(device="cpu")
-    state_dict = torch.load(f"{model_path}/consolidated.00.pth", weights_only=True, mmap=True)
-    model.load_state_dict(state_dict, assign=True)
-
-    # Load freqs_cis separately
-    with torch.no_grad():
-        model.freqs_cis = model._precompute_freqs_cis()
-    return model
-
-def load_model2(model_path, model_args):
-    model = Transformer(model_args)
-    
-    state_dict = torch.load(f"{model_path}/consolidated.00.pth", weights_only=True, mmap=True)
-    model.load_state_dict(state_dict, assign=True)
-
-    return model
+    return input_ids
 
 @dataclass
 class ModelArgs:
@@ -121,7 +127,7 @@ def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
     return converted_message
 
 if __name__ == "__main__":
-    model_name = "llama_3b_instruct"
+    model_name = "llama_3b"
     model_path = f"./{model_name}/original"
     model_config = f"{model_path}/params.json"
     with open(model_config, "r") as f:
@@ -145,25 +151,35 @@ if __name__ == "__main__":
     time_end = time.time()
     print(f"Tokenizer loading time: {time_end - time_start} seconds")
 
-    prompt = ["Hello, who are you?", "What is the capital of France? And what is the capital of Germany?"]
+    prompt = ["This is the story of", "Once upon a time in a land far, far away"]
+    max_output_len = 150
+
     inp_list = []
     inp_lens = []
     for p in prompt:
-        converted_message = convert_to_chat_template(p)
+        # converted_message = convert_to_chat_template(p)
+        converted_message = p
         tokens = tokenizer.encode(converted_message, bos=True, eos=False)
         inp_list.append(torch.tensor(tokens))
         inp_lens.append(len(tokens))
     
     max_len = max(inp_lens)
-    for i in range(len(inp_list)):
-        inp_list[i] = torch.nn.functional.pad(inp_list[i], (0, max_len - inp_lens[i]), value=tokenizer.eot_id)
-    inp_list = torch.stack(inp_list).to("cuda")
-    inp_lens = torch.tensor(inp_lens).to("cuda")
-    print(inp_list.shape)
-    print(inp_list)
+    min_prompt_len = min(inp_lens)
 
+    print(inp_lens)
+    print(min_prompt_len)
+
+    batch_size = len(prompt)
+
+    model_input = torch.full((batch_size, max_output_len), tokenizer.pad_id, dtype=torch.long, device="cuda")
+    for i in range(batch_size):
+        model_input[i, :inp_lens[i]] = inp_list[i]
+
+    input_text_mask = model_input != tokenizer.pad_id
+    print(input_text_mask)
+    
     time_start = time.time()
-    output = generate(model, inp_list, max_new_tokens=100)
+    output = generate(model, model_input, input_text_mask, min_prompt_len, max_output_len)
     time_end = time.time()
     print(f"Generation time: {time_end - time_start} seconds")
     print(tokenizer.decode(output[0].tolist()))
