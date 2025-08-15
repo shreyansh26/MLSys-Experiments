@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from flash_attn import flash_attn_func
+
 # From torchtitan codebase - https://github.com/pytorch/torchtitan/blob/6fc499f6f5b32151a799188be2208cfb09faed30/torchtitan/models/llama3/model/model.py
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Tensor:
@@ -137,6 +139,8 @@ class Attention(nn.Module):
         self,
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
+        layer_id: int,
+        curr_idx: int,
     ):
         """
         Forward pass of the attention module.
@@ -162,21 +166,27 @@ class Attention(nn.Module):
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-        # repeat k/v heads if n_kv_heads < n_heads
-        keys = repeat_kv(xk, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
-        values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
+        # # repeat k/v heads if n_kv_heads < n_heads
+        # keys = repeat_kv(xk, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
+        # values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
 
-        xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-        xk = keys.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-        xv = values.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+        # xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+        # xk = keys.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+        # xv = values.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
 
-        output = F.scaled_dot_product_attention(
-            xq, xk, xv, attn_mask=None, dropout_p=0.0, is_causal=True
+        # output = F.scaled_dot_product_attention(
+        #     xq, xk, xv, attn_mask=None, dropout_p=0.0, is_causal=True
+        # )
+
+        # output = output.transpose(
+        #     1, 2
+        # ).contiguous()  # (bs, seqlen, n_local_heads, head_dim)
+
+        output = flash_attn_func(
+            xq, xk, xv,
+            causal=True,
         )
 
-        output = output.transpose(
-            1, 2
-        ).contiguous()  # (bs, seqlen, n_local_heads, head_dim)
         output = output.view(bs, seqlen, -1)
         return self.wo(output)
 
@@ -258,6 +268,8 @@ class TransformerBlock(nn.Module):
         self,
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
+        layer_id: int,
+        curr_idx: int,
     ):
         """
         Perform a forward pass through the TransformerBlock.
@@ -270,7 +282,7 @@ class TransformerBlock(nn.Module):
             torch.Tensor: Output tensor after applying attention and feedforward layers.
 
         """
-        h = x + self.attention(self.attention_norm(x), freqs_cis)
+        h = x + self.attention(self.attention_norm(x), freqs_cis, layer_id, curr_idx)
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -330,6 +342,7 @@ class Transformer(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
+        curr_idx: int,
         eos_id: int | None = None,
         input_batch: torch.Tensor | None = None,
     ):
@@ -353,8 +366,8 @@ class Transformer(nn.Module):
         # passthrough for nonexistent layers, allows easy configuration of pipeline parallel stages
         h = self.tok_embeddings(tokens) if self.tok_embeddings else tokens
 
-        for layer in self.layers.values():
-            h = layer(h, self.freqs_cis)
+        for layer_id, layer in self.layers.items():
+            h = layer(h, self.freqs_cis, layer_id, curr_idx)
 
         h = self.norm(h) if self.norm else h
         output = self.output(h) if self.output else h
