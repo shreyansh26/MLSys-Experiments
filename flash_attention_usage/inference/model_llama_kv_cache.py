@@ -4,23 +4,6 @@ from torch import nn
 from flash_attn import flash_attn_with_kvcache
 
 # From torchtitan codebase - https://github.com/pytorch/torchtitan/blob/6fc499f6f5b32151a799188be2208cfb09faed30/torchtitan/models/llama3/model/model.py
-# class KVCache:
-#     def __init__(self, model_args, batch_size, max_len=None, device="cuda"):
-#         self.model_args = model_args
-#         self.kv_cache = []
-#         self.kv_cache_size = max_len if max_len is not None else model_args.max_seq_len
-#         self.head_dim = model_args.dim // model_args.n_heads
-#         self.batch_size = batch_size
-
-#         self.kv_cache = {str(i): (torch.zeros(self.batch_size, self.kv_cache_size, self.model_args.n_kv_heads, self.head_dim, device=device), 
-#                             torch.zeros(self.batch_size, self.kv_cache_size, self.model_args.n_kv_heads, self.head_dim, device=device)) for i in range(model_args.n_layers)}
-
-#     def get_kv_cache(self, layer_id, pos_to_get):
-#         return self.kv_cache[layer_id][0][:, pos_to_get], self.kv_cache[layer_id][1][:, pos_to_get]
-        
-#     def update_kv_cache(self, layer_id, kv_cache_new):
-#         k, v = kv_cache_new
-#         self.kv_cache[layer_id]
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Tensor:
     """

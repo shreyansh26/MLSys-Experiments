@@ -282,7 +282,7 @@ class TransformerBlock(nn.Module):
             torch.Tensor: Output tensor after applying attention and feedforward layers.
 
         """
-        h = x + self.attention(self.attention_norm(x), freqs_cis, layer_id, curr_idx)
+        h = x + self.attention(self.attention_norm(x), freqs_cis=freqs_cis, layer_id=layer_id, curr_idx=curr_idx)
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -311,7 +311,6 @@ class Transformer(nn.Module):
         self.model_args = model_args
         self.vocab_size = model_args.vocab_size
         self.n_layers = model_args.n_layers
-
         self.tok_embeddings = nn.Embedding(model_args.vocab_size, model_args.dim)
 
         # TODO persistent should be set to false, since this buffer can be recomputed.
@@ -367,7 +366,7 @@ class Transformer(nn.Module):
         h = self.tok_embeddings(tokens) if self.tok_embeddings else tokens
 
         for layer_id, layer in self.layers.items():
-            h = layer(h, self.freqs_cis, layer_id, curr_idx)
+            h = layer(h, freqs_cis=self.freqs_cis, layer_id=layer_id, curr_idx=curr_idx)
 
         h = self.norm(h) if self.norm else h
         output = self.output(h) if self.output else h
