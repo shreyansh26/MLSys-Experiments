@@ -5,6 +5,7 @@ import torch
 from model_llama import Transformer
 from tokenizer_llama import Tokenizer
 from dataclasses import dataclass
+from chat_format import render
 
 def multinomial_sample_one(
     probs: torch.Tensor, rng: Optional[torch.Generator] = None
@@ -115,6 +116,10 @@ class ModelArgs:
     use_scaled_rope: bool = None
     max_seq_len: int = None
 
+def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
+    converted_message = render(system_prompt, user_prompt)
+    return converted_message
+
 if __name__ == "__main__":
     model_name = "llama_3b_instruct"
     model_path = f"./{model_name}/original"
@@ -140,17 +145,18 @@ if __name__ == "__main__":
     time_end = time.time()
     print(f"Tokenizer loading time: {time_end - time_start} seconds")
 
-    prompt = ["Hello, who are you?", "What is the capital of France?"]
+    prompt = ["Hello, who are you?", "What is the capital of France? And what is the capital of Germany?"]
     inp_list = []
     inp_lens = []
     for p in prompt:
-        tokens = tokenizer.encode(p, bos=True, eos=False)
+        converted_message = convert_to_chat_template(p)
+        tokens = tokenizer.encode(converted_message, bos=True, eos=False)
         inp_list.append(torch.tensor(tokens))
         inp_lens.append(len(tokens))
     
     max_len = max(inp_lens)
     for i in range(len(inp_list)):
-        inp_list[i] = torch.nn.functional.pad(inp_list[i], (0, max_len - inp_lens[i]), value=tokenizer.eos_id)
+        inp_list[i] = torch.nn.functional.pad(inp_list[i], (0, max_len - inp_lens[i]), value=tokenizer.eot_id)
     inp_list = torch.stack(inp_list).to("cuda")
     inp_lens = torch.tensor(inp_lens).to("cuda")
     print(inp_list.shape)
