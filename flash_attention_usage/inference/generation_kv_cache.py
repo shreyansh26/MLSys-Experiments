@@ -20,7 +20,7 @@ class ModelArgs:
     rope_theta: float = None
     use_scaled_rope: bool = None
     max_seq_len: int = None
-    
+
 def load_model(model_path, model_args):
     with torch.device("meta"):
         model = Transformer(model_args)
@@ -135,6 +135,19 @@ def generate(
         
         curr_idx = idx
 
+    fragmented_memory = 0
+    for i, toks in enumerate(input_ids.tolist()):
+        for stop_token in stop_tokens.tolist():
+            try:
+                eos_idx = toks.index(stop_token)
+                toks = toks[:eos_idx]
+                fragmented_memory += (max_output_len - eos_idx) * head_dim * 2 * 2 * model.model_args.n_kv_heads * model.model_args.n_layers
+                break
+            except ValueError:
+                pass
+
+    fragmented_ratio = fragmented_memory / torch.cuda.get_device_properties(0).total_memory
+    print(f'Fragmented Memory: {fragmented_memory / 1e9:.2f} GB ({fragmented_ratio * 100:.2f}%)')
     return input_ids
 
 def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
@@ -142,7 +155,7 @@ def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
     return converted_message
 
 if __name__ == "__main__":
-    model_name = "llama_3b"
+    model_name = "llama_3b_instruct"
     model_path = f"./{model_name}/original"
     model_config = f"{model_path}/params.json"
     with open(model_config, "r") as f:
@@ -166,14 +179,15 @@ if __name__ == "__main__":
     time_end = time.time()
     print(f"Tokenizer loading time: {time_end - time_start} seconds")
 
-    prompt = ["This is the story of", "Once upon a time in a land far, far away"]
-    max_output_len = 150
+    # prompt = ["This is the story of", "Once upon a time in a land far, far away"]
+    prompt = ["Hello, who are you?", "What is the capital of India? What is the capital of Germany?"]
+    max_output_len = 500
 
     inp_list = []
     inp_lens = []
     for p in prompt:
-        # converted_message = convert_to_chat_template(p)
-        converted_message = p
+        converted_message = convert_to_chat_template(p)
+        # converted_message = p
         tokens = tokenizer.encode(converted_message, bos=True, eos=False)
         inp_list.append(torch.tensor(tokens))
         inp_lens.append(len(tokens))
@@ -187,7 +201,7 @@ if __name__ == "__main__":
         model_input[i, :inp_lens[i]] = inp_list[i]
 
     input_text_mask = model_input != tokenizer.pad_id
-    print(input_text_mask)
+    # print(input_text_mask)
 
     time_start = time.time()
     output = generate(model, model_input, input_text_mask, min_prompt_len, max_output_len)

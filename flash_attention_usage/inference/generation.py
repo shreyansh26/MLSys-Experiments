@@ -20,7 +20,7 @@ class ModelArgs:
     rope_theta: float = None
     use_scaled_rope: bool = None
     max_seq_len: int = None
-    
+
 def load_model(model_path, model_args):
     with torch.device("meta"):
         model = Transformer(model_args)
@@ -127,7 +127,7 @@ def convert_to_chat_template(user_prompt: str, system_prompt: str = ""):
     return converted_message
 
 if __name__ == "__main__":
-    model_name = "llama_3b"
+    model_name = "llama_3b_instruct"
     model_path = f"./{model_name}/original"
     model_config = f"{model_path}/params.json"
     with open(model_config, "r") as f:
@@ -151,24 +151,21 @@ if __name__ == "__main__":
     time_end = time.time()
     print(f"Tokenizer loading time: {time_end - time_start} seconds")
 
-    prompt = ["This is the story of", "Once upon a time in a land far, far away"]
+    # prompt = ["This is the story of", "Once upon a time in a land far, far away"]
+    prompt = ["Hello, who are you?", "What is the capital of India? What is the capital of Germany?"]
     max_output_len = 150
 
     inp_list = []
     inp_lens = []
     for p in prompt:
-        # converted_message = convert_to_chat_template(p)
-        converted_message = p
+        converted_message = convert_to_chat_template(p)
+        # converted_message = p
         tokens = tokenizer.encode(converted_message, bos=True, eos=False)
         inp_list.append(torch.tensor(tokens))
         inp_lens.append(len(tokens))
     
     max_len = max(inp_lens)
     min_prompt_len = min(inp_lens)
-
-    print(inp_lens)
-    print(min_prompt_len)
-
     batch_size = len(prompt)
 
     model_input = torch.full((batch_size, max_output_len), tokenizer.pad_id, dtype=torch.long, device="cuda")
@@ -176,7 +173,7 @@ if __name__ == "__main__":
         model_input[i, :inp_lens[i]] = inp_list[i]
 
     input_text_mask = model_input != tokenizer.pad_id
-    print(input_text_mask)
+    # print(input_text_mask)
     
     time_start = time.time()
     output = generate(model, model_input, input_text_mask, min_prompt_len, max_output_len)
