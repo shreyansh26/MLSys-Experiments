@@ -52,6 +52,7 @@ if __name__ == "__main__":
 
     plt.xlabel("Batch Size")
     plt.ylabel("Time (ms)")
+    plt.xticks(x_lora)
     plt.legend()
     plt.tight_layout()
     plt.savefig("plots/lora_vs_full_matmul.png", dpi=200)
