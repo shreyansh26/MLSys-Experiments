@@ -46,12 +46,12 @@ if __name__ == "__main__":
     la = np.asarray(lora_timings)
     x_lora = np.array(range(2, 64, 2))
     yerr_lora = np.vstack([la[:, 0] - la[:, 1], la[:, 2] - la[:, 0]])
-    plt.errorbar(x_lora, la[:, 0], yerr=yerr_lora, fmt="-o", color="#1f77b4", capsize=3, label="Lora median±range")
+    plt.errorbar(x_lora, la[:, 0], yerr=yerr_lora, fmt="-o", color="blue", capsize=3, label="Lora median±range")
 
     fa = np.asarray(full_timings)
     x_full = np.array(range(2, 64, 2))
     yerr_full = np.vstack([fa[:, 0] - fa[:, 1], fa[:, 2] - fa[:, 0]])
-    plt.errorbar(x_full, fa[:, 0], yerr=yerr_full, fmt="-o", color="#ff7f0e", capsize=3, label="Full median±range")
+    plt.errorbar(x_full, fa[:, 0], yerr=yerr_full, fmt="-o", color="orange", capsize=3, label="Full median±range")
 
     plt.xlabel("Batch Size")
     plt.ylabel("Time (ms)")
