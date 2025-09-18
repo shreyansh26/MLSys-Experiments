@@ -5,6 +5,9 @@ import numpy as np
 
 # Lora vs Full matmul
 def lora_matmul():
+    """
+    Assumes ideal case of LoRA adapters grouped in the right order.
+    """
     r = 16
     h1 = 4096
     h2 = 12288
