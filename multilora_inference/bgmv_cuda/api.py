@@ -9,7 +9,7 @@ else:
     _load_error = None
 
 
-def lora_bgmv(y: torch.Tensor,
+def lora_bgmv_cuda(y: torch.Tensor,
               x: torch.Tensor,
               A: torch.Tensor,
               B: torch.Tensor,
