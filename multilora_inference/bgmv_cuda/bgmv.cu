@@ -54,10 +54,10 @@ int main() {
     constexpr int layer_idx = 2;    // selected layer within adapter
     constexpr float scale = 0.25f;  // alpha / r
 
-    // Shrink case: F_in > F_out
-    constexpr int F_in = 1024;
-    constexpr int F_out = 16;
-
+    // mode = "expand"
+    constexpr int F_in = 16;
+    constexpr int F_out = 1024;
+    
     std::mt19937 rng(1023);
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
@@ -100,7 +100,6 @@ int main() {
     // Copy results back
     CUDA_CHECK(cudaMemcpy(hY.data(), dY, hY.size() * sizeof(T), cudaMemcpyDeviceToHost));
 
-    // Simple printout of Y to confirm execution
     std::cout << "BGMV CUDA\n";
     std::cout << "Y (first few elements):\n";
     for (int b = 0; b < B; ++b) {

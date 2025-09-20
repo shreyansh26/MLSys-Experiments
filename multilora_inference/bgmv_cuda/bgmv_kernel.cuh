@@ -202,6 +202,53 @@ __global__ void bgmv_shrink_kernel(T* Y,
     }   
 }
 
+template <int F_in, int F_out, typename T>
+__global__ void bgmv_expand_kernel(T* Y,
+                                   const T* X,
+                                   const T* W,
+                                   const int* indices,
+                                   const int num_layers,
+                                   const int layer_idx,
+                                   const T scale) {
+    auto block = cg::this_thread_block();
+    const int b = blockIdx.y;
+    const int tile_idx = blockIdx.x;
+
+    constexpr int vec_size = 16 / sizeof(T);
+    static_assert(F_in % vec_size == 0);
+    constexpr int tx = F_in / vec_size;
+    static_assert(32 % tx == 0);
+    constexpr int ty = 32 / tx;
+    constexpr int tz = 4;
+
+    const int idx = indices[b] * num_layers + layer_idx;
+    
+    // load X
+    const T* x_ptr = X + b * F_in + threadIdx.x * vec_size;
+
+    // load W
+    const T* w_ptr = W + (idx * F_out + tile_idx * tz * ty) * F_in + block.thread_rank() * vec_size; // can replace by (threadIdx.y * tx + threadIdx.x) ?
+
+    float sum = 0.f;
+#pragma unroll
+    for (int i = 0; i < vec_size; ++i) {
+        sum += to_float_device<T>(w_ptr[i]) * to_float_device<T>(x_ptr[i]) * to_float_device<T>(scale);
+    }
+    
+    cg::thread_block_tile g = cg::tiled_partition<tx>(block);
+
+#pragma unroll
+    // intra-tile reduction over tx threads: sum partial dot-products along F_in
+    for(size_t offset = tx / 2; offset > 0; offset /= 2) {
+        sum += g.shfl_down(sum, offset);
+    }
+    // move the reduced sum to lane 0 within the tile (tile leader)
+    sum = g.shfl(sum, 0);
+
+    if(threadIdx.x == 0) {
+        Y[b * F_out + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y] = sum;
+    }
+}
 
 template <int F_in, int F_out, typename T>
 void bgmv_kernel(T* Y,
@@ -213,7 +260,13 @@ void bgmv_kernel(T* Y,
                  const T scale,
                  const int batch_size) {
     if(F_in < F_out) {
-        throw std::runtime_error("F_in < F_out case not implemented yet");
+        constexpr int vec_size = 16 / sizeof(T);
+        int tx = F_in / vec_size;
+        int ty = 32 / tx;
+        int tz = 4;
+        dim3 grid(F_out / (tz * ty), batch_size);
+        dim3 block(tx, ty, tz);
+        bgmv_expand_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, num_layers, layer_idx, scale);
     }
     else {
         constexpr int vec_size = 16 / sizeof(T);
