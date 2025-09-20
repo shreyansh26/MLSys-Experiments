@@ -15,6 +15,15 @@ INCLUDES = -I$(CCCL_INC)/cub -I$(CCCL_INC)/libcudacxx/include -I$(CCCL_INC)/thru
 
 NVCCFLAGS = -std=c++17 -O3 -arch=sm_$(SM) --expt-relaxed-constexpr --extended-lambda
 
+# DTYPE selection: make DTYPE=fp16 or DTYPE=bf16 (default fp32)
+DTYPE ?= fp32
+ifeq ($(DTYPE),fp16)
+  NVCCFLAGS += -DUSE_FP16
+endif
+ifeq ($(DTYPE),bf16)
+  NVCCFLAGS += -DUSE_BF16
+endif
+
 .PHONY: all run clean
 
 all: $(EXE)

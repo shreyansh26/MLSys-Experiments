@@ -4,6 +4,8 @@
 #include <cuda_runtime.h>
 
 #include <cuda/pipeline>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <iostream>
 #include <cassert>
 #include <stdexcept>
@@ -14,6 +16,40 @@ namespace cg = cooperative_groups;
 
 __host__ __device__ inline int cdiv(int a, int b) {
     return (a + b - 1) / b;
+}
+
+// Device-side conversion helpers for generic arithmetic over T in {float, __half, __nv_bfloat16}
+template <typename U>
+__device__ __forceinline__ float to_float_device(U x) {
+    return static_cast<float>(x);
+}
+
+template <>
+__device__ __forceinline__ float to_float_device<__half>(__half x) {
+    return __half2float(x);
+}
+
+template <>
+__device__ __forceinline__ float to_float_device<__nv_bfloat16>(__nv_bfloat16 x) {
+    return __bfloat162float(x);
+}
+
+template <typename U>
+__device__ __forceinline__ U from_float_device(float x);
+
+template <>
+__device__ __forceinline__ float from_float_device<float>(float x) {
+    return x;
+}
+
+template <>
+__device__ __forceinline__ __half from_float_device<__half>(float x) {
+    return __float2half_rn(x);
+}
+
+template <>
+__device__ __forceinline__ __nv_bfloat16 from_float_device<__nv_bfloat16>(float x) {
+    return __float2bfloat16(x);
 }
 
 template <int F_in, int F_out, typename T>
@@ -34,8 +70,6 @@ __global__ void bgmv_shrink_kernel(T* Y,
     constexpr size_t ty = 4; // threadIdx.y is also 4
     constexpr size_t tile_size = tx * ty * vec_size;
     constexpr size_t num_pipeline_stages = 2;
-
-    using Vec = cub::CubVector<T, vec_size>;
 
     __shared__ T W_shared[num_pipeline_stages * tile_size];
     __shared__ T X_shared[num_pipeline_stages * tile_size];
@@ -65,7 +99,6 @@ __global__ void bgmv_shrink_kernel(T* Y,
     size_t copy_buffer_idx, compute_idx;
 
     float y = 0.f;
-    Vec x_vec, w_vec;
     size_t tile_idx;
 
 #pragma unroll
@@ -98,7 +131,7 @@ __global__ void bgmv_shrink_kernel(T* Y,
 
 #pragma unroll
         for (int i = 0; i < vec_size; ++i) {
-            sum += float(w_ptr[i]) * float(x_ptr[i]) * float(scale);
+            sum += to_float_device<T>(w_ptr[i]) * to_float_device<T>(x_ptr[i]) * to_float_device<T>(scale);
         }
 
 #pragma unroll
@@ -134,7 +167,7 @@ __global__ void bgmv_shrink_kernel(T* Y,
 
 #pragma unroll
     for (int i = 0; i < vec_size; ++i) {
-        sum += float(w_ptr[i]) * float(x_ptr[i]) * float(scale);
+        sum += to_float_device<T>(w_ptr[i]) * to_float_device<T>(x_ptr[i]) * to_float_device<T>(scale);
     }
 
 #pragma unroll
@@ -162,7 +195,10 @@ __global__ void bgmv_shrink_kernel(T* Y,
 
     // write Y
     if(block.thread_rank() == 0) {
-        Y[b * F_out + j] += y;
+        // Read-modify-write with conversion to preserve accumulation in T
+        float prev = to_float_device<T>(Y[b * F_out + j]);
+        prev += y;
+        Y[b * F_out + j] = from_float_device<T>(prev);
     }   
 }
 

@@ -6,6 +6,9 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <type_traits>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
 
 #include "bgmv_kernel.cuh"
 
@@ -19,6 +22,31 @@
         }                                                                                 \
     } while (0)
 
+// Select dtype via -DUSE_FP16 or -DUSE_BF16 (default: float)
+#if defined(USE_FP16)
+using T = __half;
+#elif defined(USE_BF16)
+using T = __nv_bfloat16;
+#else
+using T = float;
+#endif
+
+inline float to_float_host(float x) { return x; }
+inline float to_float_host(__half x) { return __half2float(x); }
+inline float to_float_host(__nv_bfloat16 x) { return __bfloat162float(x); }
+
+inline float to_float_host_from_const_ref(const T& x) { return to_float_host(x); }
+
+inline T from_float_host(float x) {
+#if defined(USE_FP16)
+    return __float2half(x);
+#elif defined(USE_BF16)
+    return __float2bfloat16(x);
+#else
+    return x;
+#endif
+}
+
 int main() {
     constexpr int B = 16;            // batch size
     constexpr int num_layers = 8;   // layers per adapter
@@ -30,21 +58,19 @@ int main() {
     constexpr int F_in = 1024;
     constexpr int F_out = 16;
 
-    using T = float;  // Use float for simplicity and broad device support
-
     std::mt19937 rng(1023);
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
     // Host buffers
     std::vector<T> hX(static_cast<size_t>(B) * F_in);
     std::vector<T> hW(static_cast<size_t>(L) * num_layers * F_out * F_in);
-    std::vector<T> hY(static_cast<size_t>(B) * F_out, T(0));
+    std::vector<T> hY(static_cast<size_t>(B) * F_out, from_float_host(0.0f));
     std::vector<int> hIndices(B);
 
     for(auto& x : hX) 
-        x = static_cast<T>(dist(rng));
+        x = from_float_host(dist(rng));
     for(auto& w : hW) 
-        w = static_cast<T>(dist(rng));
+        w = from_float_host(dist(rng));
     for (int b = 0; b < B; ++b) 
         hIndices[b] = rng() % L;
 
@@ -65,7 +91,8 @@ int main() {
     CUDA_CHECK(cudaMemcpy(dIndices, hIndices.data(), hIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
 
     // Launch shrink kernel via the templated wrapper
-    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, num_layers, layer_idx, static_cast<T>(scale), B);
+    T scaleT = from_float_host(scale);
+    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, num_layers, layer_idx, scaleT, B);
 
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -79,7 +106,8 @@ int main() {
     for (int b = 0; b < B; ++b) {
         std::cout << "b=" << b << ": ";
         for (int j = 0; j < std::min(F_out, 8); ++j) {
-            std::cout << hY[static_cast<size_t>(b) * F_out + j] << (j + 1 < std::min(F_out, 8) ? ", " : "\n");
+            float val = to_float_host(hY[static_cast<size_t>(b) * F_out + j]);
+            std::cout << val << (j + 1 < std::min(F_out, 8) ? ", " : "\n");
         }
     }
 
@@ -92,7 +120,7 @@ int main() {
             const size_t wBase = static_cast<size_t>(idx) * F_out * F_in + static_cast<size_t>(j) * F_in;
             const size_t xBase = static_cast<size_t>(b) * F_in;
             for (int i = 0; i < F_in; ++i) {
-                acc += static_cast<float>(hW[wBase + i]) * static_cast<float>(hX[xBase + i]) * scale;
+                acc += to_float_host(hW[wBase + i]) * to_float_host(hX[xBase + i]) * scale;
             }
             refY[static_cast<size_t>(b) * F_out + j] += acc;
         }
@@ -110,7 +138,7 @@ int main() {
     // Compute max abs diff
     float max_abs_diff = 0.0f;
     for (size_t k = 0; k < refY.size(); ++k) {
-        max_abs_diff = std::max(max_abs_diff, std::fabs(refY[k] - static_cast<float>(hY[k])));
+        max_abs_diff = std::max(max_abs_diff, std::fabs(refY[k] - to_float_host(hY[k])));
     }
     std::cout << "Max abs diff vs CPU: " << max_abs_diff << "\n";
 
