@@ -246,7 +246,7 @@ __global__ void bgmv_expand_kernel(T* Y,
     sum = g.shfl(sum, 0);
 
     if(threadIdx.x == 0) {
-        Y[b * F_out + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y] = sum;
+        Y[b * F_out + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y] = from_float_device<T>(sum);
     }
 }
 
