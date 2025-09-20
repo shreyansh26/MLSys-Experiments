@@ -235,6 +235,8 @@ __global__ void bgmv_expand_kernel(T* Y,
         sum += to_float_device<T>(w_ptr[i]) * to_float_device<T>(x_ptr[i]) * to_float_device<T>(scale);
     }
     
+    // tiled_partition<tx> forms disjoint groups of size tx inside the block; each group corresponds to one output row being computed
+    // Within that group, do a warp-shuffle reduction producing the full dot product for that output row
     cg::thread_block_tile g = cg::tiled_partition<tx>(block);
 
 #pragma unroll
