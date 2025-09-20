@@ -259,7 +259,7 @@ void bgmv_kernel(T* Y,
                  const int layer_idx,
                  const T scale,
                  const int batch_size) {
-    if(F_in < F_out) {
+    if constexpr (F_in < F_out) {
         constexpr int vec_size = 16 / sizeof(T);
         int tx = F_in / vec_size;
         int ty = 32 / tx;
