@@ -42,5 +42,5 @@ def lora_bgmv_cuda(y: torch.Tensor,
     _C.bgmv_forward(y_intermediate, x, A, I, int(num_layers), int(layer_idx), float(scale))
     _C.bgmv_forward(y, y_intermediate, B, I, int(num_layers), int(layer_idx), float(scale))
 
-    # Return reshaped view; storage already updated in-place via the 2D view
+    # Return reshaped view
     return y.view(original_y_shape)
