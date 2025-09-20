@@ -1,5 +1,3 @@
-# Simple Makefile to build and run the shrink BGMV CUDA example
-
 NVCC ?= nvcc
 
 # Compute capability can be overridden, e.g., make SM=90
@@ -9,9 +7,9 @@ SRC = bgmv.cu
 EXE = bgmv
 
 # Local CCCL include (thrust, cub, libcudacxx, cudax)
-CCCL_INC = $(abspath ./cccl)
+# CCCL_INC = $(abspath ./cccl)
 
-INCLUDES = -I$(CCCL_INC)/cub -I$(CCCL_INC)/libcudacxx/include -I$(CCCL_INC)/thrust -I$(CCCL_INC)/cudax/include
+# INCLUDES = -I$(CCCL_INC)/cub -I$(CCCL_INC)/libcudacxx/include -I$(CCCL_INC)/thrust -I$(CCCL_INC)/cudax/include
 
 NVCCFLAGS = -std=c++17 -O3 -arch=sm_$(SM) --expt-relaxed-constexpr --extended-lambda
 
