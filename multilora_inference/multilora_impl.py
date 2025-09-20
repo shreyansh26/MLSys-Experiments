@@ -2,7 +2,8 @@ import torch
 from triton.testing import do_bench
 import matplotlib.pyplot as plt
 import numpy as np
-from bgmv_cuda import lora_bgmv as lora_bgmv_cuda
+from bgmv_cuda import lora_bgmv_cuda as lora_bgmv_cuda_impl
+from bgmv_triton import lora_bgmv_triton as lora_bgmv_triton_impl
 
 def lora_loop(
     y: torch.Tensor,        # [B, 1, out]
@@ -39,14 +40,24 @@ def lora_gbmm(
     y += x @ A_grouped @ B_grouped
     return y
 
-def lora_bgmv(
+def lora_bgmv_cuda(
     y: torch.Tensor,        # [B, 1, out]
     x: torch.Tensor,        # [B, 1, in]
     A_T: torch.Tensor,      # [L, r, in]
     B_T: torch.Tensor,      # [L, out, r]
     I: torch.LongTensor,    # [B]
 ):
-    lora_bgmv_cuda(y, x, A_T, B_T, I)
+    lora_bgmv_cuda_impl(y, x, A_T, B_T, I)
+    return y
+
+def lora_bgmv_triton(
+    y: torch.Tensor,        # [B, 1, out]
+    x: torch.Tensor,        # [B, 1, in]
+    A_T: torch.Tensor,      # [L, r, in]
+    B_T: torch.Tensor,      # [L, out, r]
+    I: torch.LongTensor,    # [B]
+):
+    lora_bgmv_triton_impl(y, x, A_T, B_T, I)
     return y
 
 def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: bool = True):
@@ -82,12 +93,15 @@ def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: boo
 
             y_loop_out = lora_loop(y_loop, x, A, B, I)
             y_gbmm_out = lora_gbmm(y_gbmm, x, A, B, I)
-            y_bgmv_out = lora_bgmv(y_bgmv, x, A_T, B_T, I)
+            y_bgmv_cuda_out = lora_bgmv_cuda(y_bgmv, x, A_T, B_T, I)
+            y_bgmv_triton_out = lora_bgmv_triton(y_bgmv, x, A_T, B_T, I)
             print(y_loop_out)
             print(y_gbmm_out)
-            print(y_bgmv_out)
+            print(y_bgmv_cuda_out)
+            print(y_bgmv_triton_out)
             assert torch.allclose(y_loop_out, y_gbmm_out, atol=1e-3, rtol=1e-3)
-            assert torch.allclose(y_loop_out, y_bgmv_out, atol=10, rtol=10)
+            assert torch.allclose(y_loop_out, y_bgmv_cuda_out, atol=10, rtol=10)
+            assert torch.allclose(y_loop_out, y_bgmv_triton_out, atol=10, rtol=10)
 
         if bench:
             if type == "loop":
@@ -96,8 +110,10 @@ def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: boo
                 timings.append(do_bench(lambda: lora_cheat_bmm(y, x, cheat_A, cheat_B), quantiles=[0.5, 0.2, 0.8]))
             elif type == "gbmm":
                 timings.append(do_bench(lambda: lora_gbmm(y, x, A, B, I), quantiles=[0.5, 0.2, 0.8]))
-            elif type == "bgmv":
-                timings.append(do_bench(lambda: lora_bgmv(y, x, A_T, B_T, I), quantiles=[0.5, 0.2, 0.8]))
+            elif type == "bgmv_cuda":
+                timings.append(do_bench(lambda: lora_bgmv_cuda(y, x, A_T, B_T, I), quantiles=[0.5, 0.2, 0.8]))
+            elif type == "bgmv_triton":
+                timings.append(do_bench(lambda: lora_bgmv_triton(y, x, A_T, B_T, I), quantiles=[0.5, 0.2, 0.8]))
             else:
                 raise ValueError(f"Invalid type: {type}")
 
@@ -111,7 +127,8 @@ if __name__ == "__main__":
     lora_loop_timings = run_multilora_test("loop")
     lora_cheat_bmm_timings = run_multilora_test("cheat_bmm")
     lora_gbmm_timings = run_multilora_test("gbmm")
-    lora_bgmv_timings = run_multilora_test("bgmv")
+    lora_bgmv_cuda_timings = run_multilora_test("bgmv_cuda")
+    lora_bgmv_triton_timings = run_multilora_test("bgmv_triton")
 
     plt.figure(figsize=(10, 5))
 
@@ -130,14 +147,19 @@ if __name__ == "__main__":
     yerr_full = np.vstack([lg[:, 0] - lg[:, 1], lg[:, 2] - lg[:, 0]])
     plt.errorbar(x_lora_gbmm, lg[:, 0], yerr=yerr_full, fmt="-o", color="red", capsize=3, label="GBMM median±range")
 
-    lb = np.asarray(lora_bgmv_timings)
-    x_lora_bgmv = np.array(range(2, 64, 2))
-    yerr_full = np.vstack([lb[:, 0] - lb[:, 1], lb[:, 2] - lb[:, 0]])
-    plt.errorbar(x_lora_bgmv, lb[:, 0], yerr=yerr_full, fmt="-o", color="green", capsize=3, label="BGMV median±range")
+    lbc = np.asarray(lora_bgmv_cuda_timings)
+    x_lora_bgmv_cuda = np.array(range(2, 64, 2))
+    yerr_full = np.vstack([lbc[:, 0] - lbc[:, 1], lbc[:, 2] - lbc[:, 0]])
+    plt.errorbar(x_lora_bgmv_cuda, lbc[:, 0], yerr=yerr_full, fmt="-o", color="green", capsize=3, label="BGMV CUDA median±range")
+
+    lbt = np.asarray(lora_bgmv_triton_timings)
+    x_lora_bgmv_triton = np.array(range(2, 64, 2))
+    yerr_full = np.vstack([lbt[:, 0] - lbt[:, 1], lbt[:, 2] - lbt[:, 0]])
+    plt.errorbar(x_lora_bgmv_triton, lbt[:, 0], yerr=yerr_full, fmt="-o", color="purple", capsize=3, label="BGMV Triton median±range")
 
     plt.xlabel("Batch Size")
     plt.ylabel("Time (ms)")
     plt.xticks(x_lora_cheat_bmm)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("plots/lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv.png", dpi=200)
+    plt.savefig("plots/lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv_cuda_triton.png", dpi=200)
