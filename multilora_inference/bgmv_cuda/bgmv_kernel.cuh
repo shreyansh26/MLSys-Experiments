@@ -226,8 +226,8 @@ __global__ void bgmv_expand_kernel(T* Y,
     // load X
     const T* x_ptr = X + b * F_in + threadIdx.x * vec_size;
 
-    // load W
-    const T* w_ptr = W + (idx * F_out + tile_idx * tz * ty) * F_in + block.thread_rank() * vec_size; // can replace by (threadIdx.y * tx + threadIdx.x) ?
+    const T* w_ptr = W + ((idx * F_out) + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y) * F_in + threadIdx.x * vec_size;
+    // const T* w_ptr = W + (idx * F_out + tile_idx * tz * ty) * F_in + block.thread_rank() * vec_size;
 
     float sum = 0.f;
 #pragma unroll
