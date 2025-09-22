@@ -70,11 +70,6 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Row index from dataset to build the input instruction",
     )
-    parser.add_argument(
-        "--cuda",
-        action="store_true",
-        help="Force CUDA if available",
-    )
     return parser.parse_args()
 
 
@@ -122,7 +117,7 @@ def get_instruction_from_dataset(dataset_name: str, sample_index: int) -> str:
 def main() -> None:
     args = parse_args()
 
-    device = torch.device("cuda" if (args.cuda and torch.cuda.is_available()) else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch_dtype = torch.bfloat16 if args.bf16 else torch.float16
 
     ckpt_dir = resolve_checkpoint_dir(args)
