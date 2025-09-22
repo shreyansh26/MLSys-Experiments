@@ -89,12 +89,13 @@ def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: boo
         if not bench:
             y_loop = y.clone()
             y_gbmm = y.clone()
-            y_bgmv = y.clone()
+            y_bgmv_cuda = y.clone()
+            y_bgmv_triton = y.clone()
 
             y_loop_out = lora_loop(y_loop, x, A, B, I)
             y_gbmm_out = lora_gbmm(y_gbmm, x, A, B, I)
-            y_bgmv_cuda_out = lora_bgmv_cuda(y_bgmv, x, A_T, B_T, I)
-            y_bgmv_triton_out = lora_bgmv_triton(y_bgmv, x, A_T, B_T, I)
+            y_bgmv_cuda_out = lora_bgmv_cuda(y_bgmv_cuda, x, A_T, B_T, I)
+            y_bgmv_triton_out = lora_bgmv_triton(y_bgmv_triton, x, A_T, B_T, I)
             print(y_loop_out)
             print(y_gbmm_out)
             print(y_bgmv_cuda_out)
@@ -162,4 +163,4 @@ if __name__ == "__main__":
     plt.xticks(x_lora_cheat_bmm)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("plots/lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv_cuda_triton.png", dpi=200)
+    plt.savefig("plots/decode_lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv_cuda_triton.png", dpi=200)
