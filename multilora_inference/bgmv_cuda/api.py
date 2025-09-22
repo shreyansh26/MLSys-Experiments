@@ -33,6 +33,8 @@ def lora_bgmv_cuda(y: torch.Tensor,
     x = x.contiguous().view(Bsz * n, in_dim)
     y = y.contiguous().view(By * ny, out_dim)
 
+    seq_len = n
+
     assert Bsz == By and n == ny, "x/y batch or sequence length mismatch"
 
     rank = A.size(1)
@@ -40,9 +42,7 @@ def lora_bgmv_cuda(y: torch.Tensor,
 
     y_intermediate = torch.zeros(Bsz * n, rank, dtype=x.dtype, device=x.device)
 
-    SEQ_LEN = n
-
-    _C.bgmv_forward(y_intermediate, x, A, I, int(SEQ_LEN), int(num_layers), int(layer_idx), 1.0)
-    _C.bgmv_forward(y, y_intermediate, B, I, int(SEQ_LEN), int(num_layers), int(layer_idx), float(scale)) # Apply scale only in final matmul
+    _C.bgmv_forward(y_intermediate, x, A, I, int(seq_len), int(num_layers), int(layer_idx), 1.0)
+    _C.bgmv_forward(y, y_intermediate, B, I, int(seq_len), int(num_layers), int(layer_idx), float(scale)) # Apply scale only in final matmul
 
     return y
