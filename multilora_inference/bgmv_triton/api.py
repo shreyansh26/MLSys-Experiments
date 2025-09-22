@@ -23,8 +23,6 @@ def lora_bgmv_triton(y: torch.Tensor,
     rank = A.size(1)
     L = A.size(0)
 
-    original_y_shape = y.shape
-
     y_intermediate = torch.zeros(Bsz, n, rank, dtype=x.dtype, device=x.device)
 
     bgmv_triton(y_intermediate, x, A, I, num_layers=int(num_layers), layer_idx=int(layer_idx), scale=1.0, accumulate=False)

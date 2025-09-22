@@ -94,14 +94,14 @@ def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: boo
 
             y_loop_out = lora_loop(y_loop, x, A, B, I)
             y_gbmm_out = lora_gbmm(y_gbmm, x, A, B, I)
-            # y_bgmv_cuda_out = lora_bgmv_cuda(y_bgmv, x, A_T, B_T, I)
+            y_bgmv_cuda_out = lora_bgmv_cuda(y_bgmv, x, A_T, B_T, I)
             y_bgmv_triton_out = lora_bgmv_triton(y_bgmv, x, A_T, B_T, I)
             print(y_loop_out)
             print(y_gbmm_out)
-            # print(y_bgmv_cuda_out)
+            print(y_bgmv_cuda_out)
             print(y_bgmv_triton_out)
             assert torch.allclose(y_loop_out, y_gbmm_out, atol=1e-1, rtol=1e-1)
-            # assert torch.allclose(y_loop_out, y_bgmv_cuda_out, atol=10, rtol=10)
+            assert torch.allclose(y_loop_out, y_bgmv_cuda_out, atol=10, rtol=10)
             assert torch.allclose(y_loop_out, y_bgmv_triton_out, atol=10, rtol=10)
 
         if bench:
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     lora_loop_timings = run_multilora_test("loop")
     lora_cheat_bmm_timings = run_multilora_test("cheat_bmm")
     lora_gbmm_timings = run_multilora_test("gbmm")
-    # lora_bgmv_cuda_timings = run_multilora_test("bgmv_cuda")
+    lora_bgmv_cuda_timings = run_multilora_test("bgmv_cuda")
     lora_bgmv_triton_timings = run_multilora_test("bgmv_triton")
 
     plt.figure(figsize=(10, 5))
@@ -148,10 +148,10 @@ if __name__ == "__main__":
     yerr_full = np.vstack([lg[:, 0] - lg[:, 1], lg[:, 2] - lg[:, 0]])
     plt.errorbar(x_lora_gbmm, lg[:, 0], yerr=yerr_full, fmt="-o", color="red", capsize=3, label="GBMM median±range")
 
-    # lbc = np.asarray(lora_bgmv_cuda_timings)
-    # x_lora_bgmv_cuda = np.array(range(2, 64, 2))
-    # yerr_full = np.vstack([lbc[:, 0] - lbc[:, 1], lbc[:, 2] - lbc[:, 0]])
-    # plt.errorbar(x_lora_bgmv_cuda, lbc[:, 0], yerr=yerr_full, fmt="-o", color="green", capsize=3, label="BGMV CUDA median±range")
+    lbc = np.asarray(lora_bgmv_cuda_timings)
+    x_lora_bgmv_cuda = np.array(range(2, 64, 2))
+    yerr_full = np.vstack([lbc[:, 0] - lbc[:, 1], lbc[:, 2] - lbc[:, 0]])
+    plt.errorbar(x_lora_bgmv_cuda, lbc[:, 0], yerr=yerr_full, fmt="-o", color="green", capsize=3, label="BGMV CUDA median±range")
 
     lbt = np.asarray(lora_bgmv_triton_timings)
     x_lora_bgmv_triton = np.array(range(2, 64, 2))
@@ -163,4 +163,4 @@ if __name__ == "__main__":
     plt.xticks(x_lora_cheat_bmm)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("plots/prefill_lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv_cuda_triton.png", dpi=200)
+    plt.savefig("plots/prefill_lora_loop_vs_cheat_bmm_vs_gbmm_vs_bgmv_cuda_vs_bgmv_cuda_triton.png", dpi=200)
