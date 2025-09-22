@@ -18,14 +18,19 @@ def lora_bgmv_triton(y: torch.Tensor,
     Bsz, n, in_dim  = x.shape
     By,  ny, out_dim = y.shape
 
+    x = x.contiguous().view(Bsz * n, in_dim)
+    y = y.contiguous().view(By * ny, out_dim)
+
+    seq_len = n
+
     assert Bsz == By and n == ny, "x/y batch or sequence length mismatch"
 
     rank = A.size(1)
     L = A.size(0)
 
-    y_intermediate = torch.zeros(Bsz, n, rank, dtype=x.dtype, device=x.device)
+    y_intermediate = torch.zeros(Bsz * n, rank, dtype=x.dtype, device=x.device)
 
-    bgmv_triton(y_intermediate, x, A, I, num_layers=int(num_layers), layer_idx=int(layer_idx), scale=1.0, accumulate=False)
-    bgmv_triton(y, y_intermediate, B, I, num_layers=int(num_layers), layer_idx=int(layer_idx), scale=float(scale), accumulate=True) # Apply scale only in final matmul
+    bgmv_triton(y_intermediate, x, A, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=1.0, accumulate=False)
+    bgmv_triton(y, y_intermediate, B, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=float(scale), accumulate=True) # Apply scale only in final matmul
 
     return y

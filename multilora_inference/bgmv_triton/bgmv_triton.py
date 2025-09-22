@@ -188,6 +188,7 @@ def bgmv_triton(
     W: torch.Tensor,      # [L * num_layers, F_out, F_in], contiguous
     indices: torch.Tensor,# [B], int32/int64; values in [0, L)
     *,
+    seq_len: int,
     num_layers: int,
     layer_idx: int,
     scale: float = 1.0,
@@ -203,7 +204,6 @@ def bgmv_triton(
     assert Y.dtype == X.dtype == W.dtype
     assert Y.is_contiguous() and X.is_contiguous() and W.is_contiguous()
 
-    SEQ_LEN = 1
     # If we receive 3-D tensors, flatten tokens
     if X.ndim == 3 and Y.ndim == 3:
         B, n, fin = X.shape
@@ -211,8 +211,6 @@ def bgmv_triton(
         assert n == n2, "X and Y must have same sequence length"
         X = X.contiguous().view(B * n, fin)
         Y = Y.contiguous().view(B * n, fout)
-
-        SEQ_LEN = n
 
         ## No need to broadcast indices because that is handled in the kernel
 
@@ -245,7 +243,7 @@ def bgmv_triton(
     F_IN_i = int(F_in)
     F_OUT_i = int(F_out)
     B_i = int(T)
-    SEQ_LEN_i = int(SEQ_LEN)
+    SEQ_LEN_i = int(seq_len)
 
     if F_in < F_out:
         # EXPAND
