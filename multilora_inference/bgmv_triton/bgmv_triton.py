@@ -26,6 +26,7 @@ def bgmv_shrink_kernel(
     NUM_LAYERS: tl.constexpr,
     LAYER_IDX: tl.constexpr,
     B,                              # int (batch size)
+    SEQ_LEN,                        # int (sequence length)
     OUT_IS_FP16: tl.constexpr,
     OUT_IS_BF16: tl.constexpr,
     ADD_TO_Y: tl.constexpr,         # bool: if True -> Y += result ; else Y = result
@@ -34,11 +35,13 @@ def bgmv_shrink_kernel(
     pid_j = tl.program_id(axis=0)  # output row j
     pid_b = tl.program_id(axis=1)  # batch b
 
+    b_seq  = pid_b // SEQ_LEN 
+
     j_in = pid_j < F_OUT
     b_in = pid_b < B
 
     # idx = indices[b] * num_layers + layer_idx
-    idx_b = tl.load(indices_ptr + pid_b, mask=b_in, other=0)
+    idx_b = tl.load(indices_ptr + b_seq, mask=b_in, other=0)
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
     # Pointer bases (use 64-bit offsets)
@@ -108,6 +111,7 @@ def bgmv_expand_kernel(
     NUM_LAYERS: tl.constexpr,
     LAYER_IDX: tl.constexpr,
     B,                              # int (batch size)
+    SEQ_LEN,                        # int (sequence length)
     OUT_IS_FP16: tl.constexpr,
     OUT_IS_BF16: tl.constexpr,
     ADD_TO_Y: tl.constexpr,         # bool: if True -> Y += result ; else Y = result
@@ -117,12 +121,14 @@ def bgmv_expand_kernel(
     pid_m = tl.program_id(axis=0)  # tile id along output rows
     pid_b = tl.program_id(axis=1)  # batch id
 
+    b_seq  = pid_b // SEQ_LEN 
+
     j0 = pid_m * BLOCK_M
     offs_m = j0 + tl.arange(0, BLOCK_M)
     m_mask = offs_m < F_OUT
 
     # idx = indices[b] * num_layers + layer_idx
-    idx_b = tl.load(indices_ptr + pid_b)
+    idx_b = tl.load(indices_ptr + b_seq)
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
     # 32-bit constants
@@ -196,11 +202,33 @@ def bgmv_triton(
     assert Y.is_cuda and X.is_cuda and W.is_cuda and indices.is_cuda
     assert Y.dtype == X.dtype == W.dtype
     assert Y.is_contiguous() and X.is_contiguous() and W.is_contiguous()
-    assert Y.ndim == 2 and X.ndim == 2 and (W.ndim == 3)
-    assert indices.ndim == 1 and indices.shape[0] == X.shape[0]
-    B, F_out = Y.shape
-    Bx, F_in = X.shape
-    assert B == Bx
+
+    SEQ_LEN = 1
+    # If we receive 3-D tensors, flatten tokens
+    if X.ndim == 3 and Y.ndim == 3:
+        B, n, fin = X.shape
+        _, n2, fout = Y.shape
+        assert n == n2, "X and Y must have same sequence length"
+        X = X.contiguous().view(B * n, fin)
+        Y = Y.contiguous().view(B * n, fout)
+
+        SEQ_LEN = n
+
+        ## No need to broadcast indices because that is handled in the kernel
+
+        # Normalize indices length: accept [B] or [B*n]
+        # if indices.ndim != 1:
+        #     raise AssertionError("indices must be 1-D")
+        # if indices.numel() == B:
+        #     indices = indices.contiguous().repeat_interleave(n)
+        # elif indices.numel() == B * n:
+        #     indices = indices.contiguous()
+        # else:
+        #     raise AssertionError("indices must be length B (per sequence) or B*n (per token)")
+
+    T, F_out = Y.shape
+    Tx, F_in = X.shape
+    assert T == Tx
     assert W.shape[1] == F_out and W.shape[2] == F_in
     assert 0 <= layer_idx < num_layers
 
@@ -214,15 +242,10 @@ def bgmv_triton(
     else:
         raise TypeError(f"Unsupported dtype {Y.dtype}")
 
-    # Flatten pointer views
-    # Yp, Xp, Wp = Y.view(-1), X.view(-1), W.view(-1)
-    # Yp = Y
-    # Xp = X
-    # Wp = W
-
     F_IN_i = int(F_in)
     F_OUT_i = int(F_out)
-    B_i = int(B)
+    B_i = int(T)
+    SEQ_LEN_i = int(SEQ_LEN)
 
     if F_in < F_out:
         # EXPAND
@@ -233,6 +256,7 @@ def bgmv_triton(
             float(scale),
             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
             B_i,
+            SEQ_LEN_i,
             out_is_fp16, out_is_bf16,
             bool(accumulate),
         )
@@ -245,6 +269,7 @@ def bgmv_triton(
             float(scale),
             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
             B_i,
+            SEQ_LEN_i,
             out_is_fp16, out_is_bf16,
             bool(accumulate),
         )
