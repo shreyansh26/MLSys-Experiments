@@ -1,4 +1,4 @@
-# MAX_JOBS+256 python setup.py build_ext --inplace
+# MAX_JOBS=256 python setup.py build_ext --inplace
 import os
 from pathlib import Path
 from setuptools import setup
