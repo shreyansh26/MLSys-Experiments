@@ -1,5 +1,5 @@
-import json
 import datasets
+from sklearn.model_selection import train_test_split
 
 def extract_data(speaker: str, from_role: str, value_content: str, conversation: list):
     for message in conversation:
@@ -68,34 +68,43 @@ def load_multilingual_cohere_aya():
 
 def load_dataset(dataset_name: str):
     if dataset_name == "infinity_instruct":
-        return load_infinity_instruct()
+        data = load_infinity_instruct()
     elif dataset_name == "numina_math":
-        return load_numina_math()
+        data = load_numina_math()
     elif dataset_name == "opc_sft_educational":
-        return load_opc_sft_educational()
+        data = load_opc_sft_educational()
     elif dataset_name == "opc_evol_instruct":
-        return load_opc_evol_instruct()
+        data = load_opc_evol_instruct()
     elif dataset_name == "text_to_sql":
-        return load_text_to_sql()
+        data = load_text_to_sql()
     elif dataset_name == "ifeval_like_data":
-        return load_ifeval_like_data()
+        data = load_ifeval_like_data()
     elif dataset_name == "multilingual_cohere_aya":
-        return load_multilingual_cohere_aya()
+        data = load_multilingual_cohere_aya()
     else:
         raise ValueError(f"Dataset {dataset_name} not found")
 
+    data_train, data_test = train_test_split(data, test_size=1000, random_state=42)
+    return data_train, data_test
+
 if __name__ == "__main__":
-    data = load_dataset("infinity_instruct")
+    data, _ = load_dataset("infinity_instruct")
     print(data.head())
-    data = load_dataset("numina_math")
+    
+    data, _ = load_dataset("numina_math")
     print(data.head())
-    data = load_dataset("opc_sft_educational")
+    
+    data, _ = load_dataset("opc_sft_educational")
     print(data.head())
-    data = load_dataset("opc_evol_instruct")
+    
+    data, _ = load_dataset("opc_evol_instruct")
     print(data.head())
-    data = load_dataset("text_to_sql")
+    
+    data, _ = load_dataset("text_to_sql")
     print(data.head())
-    data = load_dataset("ifeval_like_data")
+    
+    data, _ = load_dataset("ifeval_like_data")
     print(data.head())
-    data = load_dataset("multilingual_cohere_aya")
+    
+    data, _ = load_dataset("multilingual_cohere_aya")
     print(data.head())
