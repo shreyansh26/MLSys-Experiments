@@ -1,12 +1,9 @@
-from __future__ import annotations
-
 import argparse
 import math
-import os
 from pathlib import Path
 from typing import Any
 from datetime import datetime
-import time
+import pytz
 
 import torch
 
@@ -21,11 +18,15 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from data_module import DataConfig, build_dataloaders
-from utils import create_optimizer, create_scheduler, get_trainable_parameter_names, set_random_seed
+from utils import DataConfig, build_dataloaders
+from utils import create_optimizer, create_scheduler, set_random_seed
 
 MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 DEFAULT_OUTPUT_ROOT = "/mnt/ssd2/shreyansh/models/multilora"
+
+def get_ist_time():
+    # Return current time in IST
+    return datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d_%H:%M:%S")
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,14 +60,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def init_wandb(run_args: argparse.Namespace, metadata: dict[str, Any], lora_modules: list[str]) -> None:
+def init_wandb(run_args: argparse.Namespace, metadata: dict[str, Any], lora_modules: list[str], current_time: str) -> None:
     if wandb is None:
         raise ImportError(
             "wandb is required but not installed. Please install it in the target environment"
         ) from wandb_import_error
     wandb.init(
         project="multilora",
-        name=run_args.dataset_name + "_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+        name=run_args.dataset_name + "_" + current_time,
         config={
             "dataset": run_args.dataset_name,
             "model": run_args.model_name,
@@ -87,7 +88,7 @@ def init_wandb(run_args: argparse.Namespace, metadata: dict[str, Any], lora_modu
 
 def prepare_model(args: argparse.Namespace) -> tuple[Any, Any]:
     torch_dtype = torch.bfloat16 if args.use_bf16 else torch.float16
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "right"
@@ -124,8 +125,8 @@ def prepare_model(args: argparse.Namespace) -> tuple[Any, Any]:
 
 
 def run_training(args: argparse.Namespace) -> None:
+    current_time = get_ist_time()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    amp_enabled = device.type == "cuda"
     set_random_seed(args.seed)
     if device.type == "cuda":
         # accelerate any residual fp32 GEMMs with TF32; bf16 path is unaffected
@@ -133,14 +134,8 @@ def run_training(args: argparse.Namespace) -> None:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    print(f"Device: {device}")
-    print(f"AMP enabled: {amp_enabled}")
-    print(f"Seed: {args.seed}")
-    print(f"Gradient accumulation steps: {args.gradient_accumulation_steps}")
-    print(f"Max grad norm: {args.max_grad_norm}")
-    print(f"Lora r: {args.lora_r}")
-
     tokenizer, model = prepare_model(args)
+    model.print_trainable_parameters()
 
     data_config = DataConfig(
         dataset_name=args.dataset_name,
@@ -154,7 +149,7 @@ def run_training(args: argparse.Namespace) -> None:
 
     lora_modules = [name for name in model.peft_config["default"].target_modules]
     print(f"LoRA modules: {lora_modules}")
-    init_wandb(args, metadata, lora_modules)
+    init_wandb(args, metadata, lora_modules, current_time)
 
     model = model.to(device)
 
@@ -168,13 +163,10 @@ def run_training(args: argparse.Namespace) -> None:
     num_warmup_steps = int(total_training_steps * args.warmup_ratio)
     scheduler = create_scheduler(optimizer, num_warmup_steps, total_training_steps)
 
-    
-
-    output_dir = Path(args.output_root) / args.dataset_name
+    output_dir = Path(args.output_root) / f"{args.dataset_name}_{current_time}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    wandb.log({"trainable_parameters": len(get_trainable_parameter_names(model))})
-
+    print("Starting training...")
     for epoch in range(args.num_epochs):
         model.train()
         optimizer.zero_grad(set_to_none=True)
@@ -198,24 +190,23 @@ def run_training(args: argparse.Namespace) -> None:
                 scheduler.step()
 
             running_loss += loss.item() * args.gradient_accumulation_steps
-            if step_idx % 10 == 0:
-                metrics = {
-                    "train/loss": running_loss / step_idx,
-                    "train/lr": scheduler.get_last_lr()[0],
-                    "epoch": epoch + 1,
-                    "train/current_epoch": epoch + 1,
-                    "global_step": (epoch * len(train_loader)) + step_idx,
-                }
-                if latest_grad_norm is not None:
-                    metrics["train/grad_norm"] = latest_grad_norm
-                wandb.log(metrics)
-                progress_bar.set_postfix({"loss": running_loss / step_idx})
+            # if step_idx % 10 == 0:
+            metrics = {
+                "train/loss": running_loss / step_idx,
+                "train/lr": scheduler.get_last_lr()[0],
+                "epoch": epoch + 1,
+                "train/current_epoch": epoch + 1,
+                "global_step": (epoch * len(train_loader)) + step_idx,
+            }
+            if latest_grad_norm is not None:
+                metrics["train/grad_norm"] = latest_grad_norm
+            wandb.log(metrics)
+            progress_bar.set_postfix({"loss": running_loss / step_idx})
 
         epoch_loss = running_loss / len(train_loader)
         wandb.log({
             "train/epoch_loss": epoch_loss,
             "epoch": epoch + 1,
-            "train/current_epoch": epoch + 1,
         })
 
         model.eval()
