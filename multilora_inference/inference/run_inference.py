@@ -168,5 +168,3 @@ if __name__ == "__main__":
     # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql_2025-09-23_09:47:35/epoch-2" --dataset-name text_to_sql
     # CUDA_VISIBLE_DEVICES=0 python run_inference.py --dataset-name <name> --epoch 2 --sample-index 0
     main()
-
-
