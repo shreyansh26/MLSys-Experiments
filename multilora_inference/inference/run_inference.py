@@ -1,3 +1,5 @@
+import sys
+import os
 import argparse
 from pathlib import Path
 from typing import Any
@@ -5,7 +7,8 @@ from typing import Any
 import torch
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoTokenizer
-from local_dataset import load_dataset
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from sft.local_dataset import load_dataset
 
 
 DEFAULT_OUTPUT_ROOT = "/mnt/ssd2/shreyansh/models/multilora"
