@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 from typing import Any
@@ -102,8 +100,9 @@ def build_chat_inputs(tokenizer: Any, instruction: str, device: torch.device) ->
     return {k: v.to(device) for k, v in model_inputs.items()}
 
 
-def get_instruction_from_dataset(dataset_name: str, sample_index: int) -> str:
-    df = load_dataset(dataset_name)
+def get_instruction_output_from_dataset(dataset_name: str, sample_index: int) -> str:
+    # Load the test split
+    _, df = load_dataset(dataset_name)
     if len(df) == 0:
         raise ValueError(f"Dataset '{dataset_name}' is empty")
     # Allow out-of-range indices by wrapping around
@@ -111,7 +110,9 @@ def get_instruction_from_dataset(dataset_name: str, sample_index: int) -> str:
     row = df.iloc[safe_index]
     if "instruction" not in row:
         raise KeyError("Dataset row does not contain 'instruction' column")
-    return str(row["instruction"]) if row["instruction"] is not None else ""
+    if "output" not in row:
+        raise KeyError("Dataset row does not contain 'output' column")
+    return str(row["instruction"]), str(row["output"])
 
 
 def main() -> None:
@@ -135,10 +136,14 @@ def main() -> None:
 
     tokenizer = load_tokenizer(ckpt_dir, args.model_name)
 
-    instruction = get_instruction_from_dataset(args.dataset_name, args.sample_index)
+    instruction, output = get_instruction_output_from_dataset(args.dataset_name, args.sample_index)
     inputs = build_chat_inputs(tokenizer, instruction, device)
 
+    print("Instruction:")
     print(instruction)
+    print("Output:")
+    print(output)
+    print("-"*100)
 
     with torch.no_grad():
         generated_ids = model.generate(
@@ -157,8 +162,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Respect external CUDA_VISIBLE_DEVICES; user can set to target a specific GPU
-    # Example: CUDA_VISIBLE_DEVICES=4 python run_inference.py --dataset-name <name> --epoch 2 --sample-index 0
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql_2025-09-23_09:47:35/epoch-2" --dataset-name text_to_sql
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --dataset-name <name> --epoch 2 --sample-index 0
     main()
 
 
