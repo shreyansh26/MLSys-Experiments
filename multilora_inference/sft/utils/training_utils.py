@@ -1,8 +1,3 @@
-"""Training helper utilities for the multilora project."""
-
-from __future__ import annotations
-
-import math
 import random
 from typing import Iterable, Sequence
 
@@ -70,8 +65,3 @@ def create_scheduler(
         num_training_steps=num_training_steps,
     )
     return scheduler
-
-
-def get_trainable_parameter_names(model: nn.Module) -> list[str]:
-    """Return the names of parameters that will receive gradients."""
-    return [name for name, param in model.named_parameters() if param.requires_grad]
