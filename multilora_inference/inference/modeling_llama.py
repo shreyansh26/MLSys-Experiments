@@ -153,12 +153,24 @@ class LlamaMLP(nn.Module):
 
     def forward(self, x, layer_idx):
         gate_proj = self.gate_proj(x)
-        gate_proj = gate_proj + torch.einsum("bnf,bfi->bni", self.lora_B_weights["gate_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["gate_proj"][layer_idx], gate_proj))
+        lora_A_weights = getattr(self, "lora_A_weights", None)
+        lora_B_weights = getattr(self, "lora_B_weights", None)
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_gate = lora_A_weights["gate_proj"][layer_idx].to(gate_proj)
+            B_gate = lora_B_weights["gate_proj"][layer_idx].to(gate_proj)
+            gate_proj = gate_proj + torch.einsum("bnf,bfi->bni", B_gate, torch.einsum("bfi,bni->bnf", A_gate, gate_proj))
+
         up_proj = self.up_proj(x)
-        up_proj = up_proj + torch.einsum("bnf,bfi->bni", self.lora_B_weights["up_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["up_proj"][layer_idx], up_proj))
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_up = lora_A_weights["up_proj"][layer_idx].to(up_proj)
+            B_up = lora_B_weights["up_proj"][layer_idx].to(up_proj)
+            up_proj = up_proj + torch.einsum("bnf,bfi->bni", B_up, torch.einsum("bfi,bni->bnf", A_up, up_proj))
         act = self.act_fn(gate_proj) * up_proj
         down_proj = self.down_proj(act)
-        down_proj = down_proj + torch.einsum("bnf,bfi->bni", self.lora_B_weights["down_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["down_proj"][layer_idx], down_proj))
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_down = lora_A_weights["down_proj"][layer_idx].to(down_proj)
+            B_down = lora_B_weights["down_proj"][layer_idx].to(down_proj)
+            down_proj = down_proj + torch.einsum("bnf,bfi->bni", B_down, torch.einsum("bfi,bni->bnf", A_down, down_proj))
         return down_proj
 
 
@@ -240,15 +252,26 @@ class LlamaAttention(nn.Module):
         hidden_shape = (*input_shape, -1, self.head_dim)
 
         query_states = self.q_proj(hidden_states)
-        query_states = query_states + torch.einsum("bnf,bfi->bni", self.lora_B_weights["q_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["q_proj"][layer_idx], query_states))
+        lora_A_weights = getattr(self, "lora_A_weights", None)
+        lora_B_weights = getattr(self, "lora_B_weights", None)
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_q = lora_A_weights["q_proj"][layer_idx].to(query_states)
+            B_q = lora_B_weights["q_proj"][layer_idx].to(query_states)
+            query_states = query_states + torch.einsum("bnf,bfi->bni", B_q, torch.einsum("bfi,bni->bnf", A_q, query_states))
         query_states = query_states.view(hidden_shape).transpose(1, 2)
 
         key_states = self.k_proj(hidden_states)
-        key_states = key_states + torch.einsum("bnf,bfi->bni", self.lora_B_weights["k_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["k_proj"][layer_idx], key_states))
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_k = lora_A_weights["k_proj"][layer_idx].to(key_states)
+            B_k = lora_B_weights["k_proj"][layer_idx].to(key_states)
+            key_states = key_states + torch.einsum("bnf,bfi->bni", B_k, torch.einsum("bfi,bni->bnf", A_k, key_states))
         key_states = key_states.view(hidden_shape).transpose(1, 2)
         
         value_states = self.v_proj(hidden_states)
-        value_states = value_states + torch.einsum("bnf,bfi->bni", self.lora_B_weights["v_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["v_proj"][layer_idx], value_states))
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_v = lora_A_weights["v_proj"][layer_idx].to(value_states)
+            B_v = lora_B_weights["v_proj"][layer_idx].to(value_states)
+            value_states = value_states + torch.einsum("bnf,bfi->bni", B_v, torch.einsum("bfi,bni->bnf", A_v, value_states))
         value_states = value_states.view(hidden_shape).transpose(1, 2)
 
         cos, sin = position_embeddings
@@ -257,7 +280,7 @@ class LlamaAttention(nn.Module):
         if past_key_values is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            key_states, value_states = past_key_values.update(key_states, value_states, layer_idx, cache_kwargs)
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
@@ -276,7 +299,10 @@ class LlamaAttention(nn.Module):
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-        attn_output = attn_output + torch.einsum("bnf,bfi->bni", self.lora_B_weights["o_proj"][layer_idx], torch.einsum("bfi,bni->bnf", self.lora_A_weights["o_proj"][layer_idx], attn_output))
+        if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
+            A_o = lora_A_weights["o_proj"][layer_idx].to(attn_output)
+            B_o = lora_B_weights["o_proj"][layer_idx].to(attn_output)
+            attn_output = attn_output + torch.einsum("bnf,bfi->bni", B_o, torch.einsum("bfi,bni->bnf", A_o, attn_output))
         return attn_output, attn_weights
 
 
@@ -349,7 +375,7 @@ class LlamaPreTrainedModel(PreTrainedModel):
 
 @auto_docstring
 class LlamaModel(LlamaPreTrainedModel):
-    def __init__(self, config: LlamaConfig, lora_A_weights: Optional[torch.Tensor] = None, lora_B_weights: Optional[torch.Tensor] = None):
+    def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -361,8 +387,6 @@ class LlamaModel(LlamaPreTrainedModel):
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = LlamaRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
-        self.lora_A_weights = lora_A_weights
-        self.lora_B_weights = lora_B_weights
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -435,9 +459,9 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
-    def __init__(self, config, lora_A_weights: Optional[torch.Tensor] = None, lora_B_weights: Optional[torch.Tensor] = None):
+    def __init__(self, config):
         super().__init__(config)
-        self.model = LlamaModel(config, lora_A_weights, lora_B_weights)
+        self.model = LlamaModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
