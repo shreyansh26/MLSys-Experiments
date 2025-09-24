@@ -10,7 +10,7 @@ def get_base_model_config(checkpoint_path: str):
     config = json.load(open(path))
     base_model_name = config['base_model_name_or_path']
     base_model_config = AutoConfig.from_pretrained(base_model_name)
-    return base_model_config
+    return base_model_config, base_model_name
 
 def analyze_adapter_weights(checkpoint_path: str, base_model_config: AutoConfig):
     lora_adapter_path = os.path.join(checkpoint_path, "adapter_model.safetensors")
@@ -66,7 +66,41 @@ def analyze_adapter_weights(checkpoint_path: str, base_model_config: AutoConfig)
         print("A:", A_weights[module].shape)
         print("B:", B_weights[module].shape)
 
+def get_A_B_weights(checkpoint_path: str, base_model_config: AutoConfig, device: torch.device):
+    lora_adapter_path = os.path.join(checkpoint_path, "adapter_model.safetensors")
+    tensors = {}
+    with safe_open(lora_adapter_path, framework="pt", device=0) as f:
+        for k in f.keys():
+            tensors[k] = f.get_tensor(k)
+    
+    modules_with_lora = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "gate_proj", "down_proj"]
+    A_weights = []
+    B_weights = []
+
+    A_weights = {}
+    B_weights = {}
+
+    for module in modules_with_lora:
+        A_weights[module] = []
+        B_weights[module] = []
+    
+    for layer in range(base_model_config.num_hidden_layers):
+        for module in modules_with_lora:
+            if module in ["q_proj", "k_proj", "v_proj", "o_proj"]:
+                module_name = "self_attn." + module
+            elif module in ["up_proj", "gate_proj", "down_proj"]:
+                module_name = "mlp." + module
+
+            A_weights[module].append(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"])
+            B_weights[module].append(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"])
+
+    for module in modules_with_lora:
+        A_weights[module] = torch.stack(A_weights[module], dim=0)
+        B_weights[module] = torch.stack(B_weights[module], dim=0)
+
+    return A_weights, B_weights
+
 if __name__ == "__main__":
     checkpoint_path = "/mnt/ssd2/shreyansh/models/multilora/ifeval_like_data_2025-09-23_08:26:56/epoch-2"
-    base_model_config = get_base_model_config(checkpoint_path)
+    base_model_config, base_model_name = get_base_model_config(checkpoint_path)
     analyze_adapter_weights(checkpoint_path, base_model_config)
