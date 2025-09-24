@@ -6,9 +6,11 @@ from typing import Any
 
 import torch
 from peft import AutoPeftModelForCausalLM
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from sft.local_dataset import load_dataset
+from analyze_lora_adapters import get_A_B_weights, get_base_model_config
+from modeling_llama import LlamaForCausalLM
 
 
 DEFAULT_OUTPUT_ROOT = "/mnt/ssd2/shreyansh/models/multilora"
@@ -18,6 +20,13 @@ DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run inference with LoRA-adapted model")
+    parser.add_argument(
+        "--inference-mode",
+        type=str,
+        default="peft",
+        choices=["base_model", "peft", "custom_lora"],
+        help="Inference mode",
+    )
     parser.add_argument(
         "--checkpoint-dir",
         type=str,
@@ -128,12 +137,33 @@ def main() -> None:
     if not ckpt_dir.exists():
         raise FileNotFoundError(f"Checkpoint directory does not exist: {ckpt_dir}")
 
-    # AutoPeftModelForCausalLM will restore the base model plus attached LoRA adapters
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        str(ckpt_dir),
-        torch_dtype=torch_dtype,
-        device_map=None,
-    )
+    if args.inference_mode == "base_model":
+        _, base_model_name = get_base_model_config(ckpt_dir)
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            torch_dtype=torch_dtype,
+            device_map=None,
+        )
+    elif args.inference_mode == "peft":
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            str(ckpt_dir),
+            torch_dtype=torch_dtype,
+            device_map=None,
+        )
+    elif args.inference_mode == "custom_lora":
+        base_model_config, _ = get_base_model_config(ckpt_dir)
+        lora_A_weights, lora_B_weights = get_A_B_weights(ckpt_dir, base_model_config, device)
+
+        model = LlamaForCausalLM.from_pretrained(
+            str(ckpt_dir),
+            torch_dtype=torch_dtype,
+            device_map=None,
+        )
+        model.model.lora_A_weights = lora_A_weights
+        model.model.lora_B_weights = lora_B_weights
+    else:
+        raise ValueError(f"Invalid inference mode: {args.inference_mode}")
+    
     model = model.to(device)
     model.eval()
 
@@ -165,6 +195,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql_2025-09-23_09:47:35/epoch-2" --dataset-name text_to_sql
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql_2025-09-23_09:47:35/epoch-2" --dataset-name text_to_sql --inference-mode peft
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/numina_math_2025-09-23_08:49:10/epoch-2" --dataset-name text_to_sql --inference-mode custom_lora
     # CUDA_VISIBLE_DEVICES=0 python run_inference.py --dataset-name <name> --epoch 2 --sample-index 0
     main()
