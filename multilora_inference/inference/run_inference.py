@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import argparse
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from modeling_llama import LlamaForCausalLM
 DEFAULT_OUTPUT_ROOT = "/mnt/ssd2/shreyansh/models/multilora"
 DEFAULT_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
+DEFAULT_BATCH_SIZE = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,33 +100,48 @@ def load_tokenizer(checkpoint_path: Path, fallback_model_name: str) -> Any:
         tokenizer = AutoTokenizer.from_pretrained(fallback_model_name, use_fast=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.padding_side = "right"
+    tokenizer.padding_side = "left"
     return tokenizer
 
 
-def build_chat_inputs(tokenizer: Any, instruction: str, device: torch.device) -> dict[str, torch.Tensor]:
-    messages = [
-        {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
-        {"role": "user", "content": instruction},
-    ]
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    model_inputs = tokenizer(text, return_tensors="pt")
-    return {k: v.to(device) for k, v in model_inputs.items()}
+def build_chat_inputs(tokenizer: Any, instructions: list[str], device: torch.device) -> dict[str, torch.Tensor]:
+    prompts = []
+    for instruction in instructions:
+        messages = [
+            {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            {"role": "user", "content": instruction},
+        ]
+        prompts.append(tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True))
+
+    model_inputs = tokenizer(prompts, return_tensors="pt", padding=True)
+    inputs_on_device = {k: v.to(device) for k, v in model_inputs.items()}
+    return inputs_on_device
 
 
-def get_instruction_output_from_dataset(dataset_name: str, sample_index: int) -> str:
+def get_instructions_outputs_from_dataset(dataset_name: str, start_index: int, batch_size: int) -> tuple[list[str], list[str], list[int]]:
+    if batch_size <= 0:
+        raise ValueError("Batch size must be positive")
+
     # Load the test split
     _, df = load_dataset(dataset_name)
     if len(df) == 0:
         raise ValueError(f"Dataset '{dataset_name}' is empty")
-    # Allow out-of-range indices by wrapping around
-    safe_index = sample_index % len(df)
-    row = df.iloc[safe_index]
-    if "instruction" not in row:
-        raise KeyError("Dataset row does not contain 'instruction' column")
-    if "output" not in row:
-        raise KeyError("Dataset row does not contain 'output' column")
-    return str(row["instruction"]), str(row["output"])
+    if "instruction" not in df.columns:
+        raise KeyError("Dataset does not contain 'instruction' column")
+    if "output" not in df.columns:
+        raise KeyError("Dataset does not contain 'output' column")
+
+    instructions: list[str] = []
+    outputs: list[str] = []
+    sample_indices: list[int] = []
+    for offset in range(batch_size):
+        safe_index = (start_index + offset) % len(df)
+        row = df.iloc[safe_index]
+        instructions.append(str(row["instruction"]))
+        outputs.append(str(row["output"]))
+        sample_indices.append(int(safe_index))
+
+    return instructions, outputs, sample_indices
 
 
 def main() -> None:
@@ -169,14 +186,20 @@ def main() -> None:
 
     tokenizer = load_tokenizer(ckpt_dir, args.model_name)
 
-    instruction, output = get_instruction_output_from_dataset(args.dataset_name, args.sample_index)
-    inputs = build_chat_inputs(tokenizer, instruction, device)
+    instructions, reference_outputs, sample_indices = get_instructions_outputs_from_dataset(
+        args.dataset_name, args.sample_index, DEFAULT_BATCH_SIZE
+    )
+    inputs = build_chat_inputs(tokenizer, instructions, device)
 
-    print("Instruction:")
-    print(instruction)
-    print("Output:")
-    print(output)
-    print("-"*100)
+    print(
+        f"Running inference on batch starting at dataset index {args.sample_index} with batch size {DEFAULT_BATCH_SIZE}."
+    )
+    print(f"Resolved dataset indices: {sample_indices}")
+    print("-" * 100)
+
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    start_time = time.perf_counter()
 
     with torch.no_grad():
         generated_ids = model.generate(
@@ -188,10 +211,38 @@ def main() -> None:
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    # Remove the prompt portion for clean decoding
-    generated_only_ids = generated_ids[:, inputs["input_ids"].shape[-1]:]
-    output_text = tokenizer.decode(generated_only_ids[0], skip_special_tokens=True)
-    print(output_text)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    end_time = time.perf_counter()
+
+    input_sequence_length = int(inputs["input_ids"].shape[-1])
+    generated_ids = generated_ids.cpu()
+    generated_token_tensors = [seq[input_sequence_length:] for seq in generated_ids]
+
+    total_generated_tokens = sum(tensor.numel() for tensor in generated_token_tensors)
+    generation_seconds = max(end_time - start_time, 1e-8)
+    tokens_per_second = total_generated_tokens / generation_seconds if total_generated_tokens else 0.0
+
+    generated_texts = tokenizer.batch_decode(
+        [tensor.tolist() for tensor in generated_token_tensors], skip_special_tokens=True
+    )
+
+    for batch_idx, (dataset_idx, instruction, reference, prediction) in enumerate(
+        zip(sample_indices, instructions, reference_outputs, generated_texts)
+    ):
+        print(f"Sample {batch_idx} (dataset index {dataset_idx}):")
+        print("Instruction:")
+        print(instruction)
+        print("Reference Output:")
+        print(reference)
+        print("Generated Output:")
+        print(prediction)
+        print("-" * 100)
+
+    print(
+        f"Decoding throughput: {tokens_per_second:.2f} tokens/sec "
+        f"({total_generated_tokens} tokens in {generation_seconds:.2f} seconds)."
+    )
 
 
 if __name__ == "__main__":
