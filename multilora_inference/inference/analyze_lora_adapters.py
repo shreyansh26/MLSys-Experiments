@@ -40,10 +40,6 @@ def analyze_adapter_weights(checkpoint_path: str, base_model_config: AutoConfig)
     print("Base model hidden size:", base_model_config.hidden_size)
     print("Base model num hidden layers:", base_model_config.num_hidden_layers)
 
-
-    print("A:", tensors[f"base_model.model.model.layers.0.mlp.down_proj.lora_A.weight"].shape)
-    print("A:", tensors[f"base_model.model.model.layers.1.mlp.down_proj.lora_A.weight"].shape)
-
     print("="*100)
     print("Shape of LoRA adapters:")
     for layer in range(base_model_config.num_hidden_layers):
