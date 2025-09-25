@@ -158,19 +158,19 @@ class LlamaMLP(nn.Module):
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_gate = lora_A_weights["gate_proj"][layer_idx].to(gate_proj)
             B_gate = lora_B_weights["gate_proj"][layer_idx].to(gate_proj)
-            gate_proj = gate_proj + torch.einsum("bnf,bfi->bni", B_gate, torch.einsum("bfi,bni->bnf", A_gate, gate_proj))
+            gate_proj = gate_proj + torch.einsum("fi,bni->bnf", B_gate, torch.einsum("fi,bni->bnf", A_gate, x))
 
         up_proj = self.up_proj(x)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_up = lora_A_weights["up_proj"][layer_idx].to(up_proj)
             B_up = lora_B_weights["up_proj"][layer_idx].to(up_proj)
-            up_proj = up_proj + torch.einsum("bnf,bfi->bni", B_up, torch.einsum("bfi,bni->bnf", A_up, up_proj))
+            up_proj = up_proj + torch.einsum("fi,bni->bnf", B_up, torch.einsum("fi,bni->bnf", A_up, x))
         act = self.act_fn(gate_proj) * up_proj
         down_proj = self.down_proj(act)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_down = lora_A_weights["down_proj"][layer_idx].to(down_proj)
             B_down = lora_B_weights["down_proj"][layer_idx].to(down_proj)
-            down_proj = down_proj + torch.einsum("bnf,bfi->bni", B_down, torch.einsum("bfi,bni->bnf", A_down, down_proj))
+            down_proj = down_proj + torch.einsum("fi,bni->bnf", B_down, torch.einsum("fi,bni->bnf", A_down, act))
         return down_proj
 
 
@@ -257,21 +257,21 @@ class LlamaAttention(nn.Module):
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_q = lora_A_weights["q_proj"][layer_idx].to(query_states)
             B_q = lora_B_weights["q_proj"][layer_idx].to(query_states)
-            query_states = query_states + torch.einsum("bnf,bfi->bni", B_q, torch.einsum("bfi,bni->bnf", A_q, query_states))
+            query_states = query_states + torch.einsum("fi,bni->bnf", B_q, torch.einsum("fi,bni->bnf", A_q, hidden_states))
         query_states = query_states.view(hidden_shape).transpose(1, 2)
 
         key_states = self.k_proj(hidden_states)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_k = lora_A_weights["k_proj"][layer_idx].to(key_states)
             B_k = lora_B_weights["k_proj"][layer_idx].to(key_states)
-            key_states = key_states + torch.einsum("bnf,bfi->bni", B_k, torch.einsum("bfi,bni->bnf", A_k, key_states))
+            key_states = key_states + torch.einsum("fi,bni->bnf", B_k, torch.einsum("fi,bni->bnf", A_k, hidden_states))
         key_states = key_states.view(hidden_shape).transpose(1, 2)
         
         value_states = self.v_proj(hidden_states)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_v = lora_A_weights["v_proj"][layer_idx].to(value_states)
             B_v = lora_B_weights["v_proj"][layer_idx].to(value_states)
-            value_states = value_states + torch.einsum("bnf,bfi->bni", B_v, torch.einsum("bfi,bni->bnf", A_v, value_states))
+            value_states = value_states + torch.einsum("fi,bni->bnf", B_v, torch.einsum("fi,bni->bnf", A_v, hidden_states))
         value_states = value_states.view(hidden_shape).transpose(1, 2)
 
         cos, sin = position_embeddings
@@ -298,12 +298,12 @@ class LlamaAttention(nn.Module):
         )
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-        attn_output = self.o_proj(attn_output)
+        attn_output_out = self.o_proj(attn_output)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_o = lora_A_weights["o_proj"][layer_idx].to(attn_output)
             B_o = lora_B_weights["o_proj"][layer_idx].to(attn_output)
-            attn_output = attn_output + torch.einsum("bnf,bfi->bni", B_o, torch.einsum("bfi,bni->bnf", A_o, attn_output))
-        return attn_output, attn_weights
+            attn_output_out = attn_output_out + torch.einsum("fi,bni->bnf", B_o, torch.einsum("fi,bni->bnf", A_o, attn_output))
+        return attn_output_out, attn_weights
 
 
 class LlamaDecoderLayer(GradientCheckpointingLayer):
@@ -390,6 +390,45 @@ class LlamaModel(LlamaPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+        # LoRA: storage for weights; when set via the property, we propagate
+        # them down to all relevant submodules so they can access without
+        # explicit forward args.
+        self._lora_A_weights = None
+        self._lora_B_weights = None
+
+    def _propagate_lora_to_submodules(self) -> None:
+        """
+        Attach the LoRA weight dictionaries to all decoder submodules that need them.
+        This lets modules like `LlamaAttention` and `LlamaMLP` access the weights via
+        getattr(self, "lora_A_weights", None) without having to thread them through forwards.
+        """
+        for layer in self.layers:
+            # Attach on the layer itself (optional) and required leaf submodules
+            layer.lora_A_weights = self._lora_A_weights
+            layer.lora_B_weights = self._lora_B_weights
+            layer.self_attn.lora_A_weights = self._lora_A_weights
+            layer.self_attn.lora_B_weights = self._lora_B_weights
+            layer.mlp.lora_A_weights = self._lora_A_weights
+            layer.mlp.lora_B_weights = self._lora_B_weights
+
+    @property
+    def lora_A_weights(self):
+        return self._lora_A_weights
+
+    @lora_A_weights.setter
+    def lora_A_weights(self, value):
+        self._lora_A_weights = value
+        self._propagate_lora_to_submodules()
+
+    @property
+    def lora_B_weights(self):
+        return self._lora_B_weights
+
+    @lora_B_weights.setter
+    def lora_B_weights(self, value):
+        self._lora_B_weights = value
+        self._propagate_lora_to_submodules()
 
     @check_model_inputs
     @auto_docstring

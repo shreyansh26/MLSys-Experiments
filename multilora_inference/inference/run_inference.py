@@ -168,11 +168,11 @@ def main() -> None:
             device_map=None,
         )
     elif args.inference_mode == "custom_lora":
-        base_model_config, _ = get_base_model_config(ckpt_dir)
-        lora_A_weights, lora_B_weights = get_A_B_weights(ckpt_dir, base_model_config, device)
+        base_model_config, base_model_name = get_base_model_config(ckpt_dir)
+        lora_A_weights, lora_B_weights = get_A_B_weights(ckpt_dir, base_model_config)
 
         model = LlamaForCausalLM.from_pretrained(
-            str(ckpt_dir),
+            base_model_name,
             torch_dtype=torch_dtype,
             device_map=None,
         )
