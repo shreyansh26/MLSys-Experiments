@@ -101,8 +101,8 @@ def run_multilora_test(type: str, dtype: torch.dtype = torch.float16, bench: boo
             print(y_bgmv_cuda_out)
             print(y_bgmv_triton_out)
             assert torch.allclose(y_loop_out, y_gbmm_out, atol=1e-3, rtol=1e-3)
-            assert torch.allclose(y_loop_out, y_bgmv_cuda_out, atol=10, rtol=10)
-            assert torch.allclose(y_loop_out, y_bgmv_triton_out, atol=10, rtol=10)
+            assert torch.allclose(y_loop_out, y_bgmv_cuda_out, atol=1e-3, rtol=1e-3)
+            assert torch.allclose(y_loop_out, y_bgmv_triton_out, atol=1e-3, rtol=1e-3)
 
         if bench:
             if type == "loop":
