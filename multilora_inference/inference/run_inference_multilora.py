@@ -257,6 +257,7 @@ def main() -> None:
     inputs = build_chat_inputs(tokenizer, instructions, device)
     print("-" * 100)
 
+    # TODO: Have a warmup step
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     start_time = time.perf_counter()

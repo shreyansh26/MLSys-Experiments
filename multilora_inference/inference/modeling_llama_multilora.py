@@ -44,8 +44,9 @@ from transformers.utils import TransformersKwargs, auto_docstring, can_return_tu
 from transformers.utils.deprecation import deprecate_kwarg
 from transformers.utils.generic import check_model_inputs
 from transformers.models.llama.configuration_llama import LlamaConfig
-from bgmv_cuda import lora_bgmv_cuda as lora_bgmv_cuda_impl
-from bgmv_triton import lora_bgmv_triton as lora_bgmv_triton_impl
+# from bgmv_cuda import lora_bgmv_cuda as lora_bgmv_cuda_impl
+# TODO: Have a bgmv_triton version and a bgmv_cuda version
+from bgmv_triton import lora_bgmv_triton as lora_bgmv_cuda_impl
 
 
 logger = logging.get_logger(__name__)
