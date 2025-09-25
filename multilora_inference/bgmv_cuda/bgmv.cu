@@ -53,6 +53,7 @@ int main() {
     constexpr int L = 10;           // number of adapters
     constexpr int layer_idx = 2;    // selected layer within adapter
     constexpr float scale = 0.25f;  // alpha / r
+    constexpr int seq_len = 1024;
 
     // mode = "expand"
     constexpr int F_in = 16;
@@ -62,9 +63,9 @@ int main() {
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
     // Host buffers
-    std::vector<T> hX(static_cast<size_t>(B) * F_in);
+    std::vector<T> hX(static_cast<size_t>(B) * seq_len * F_in);
     std::vector<T> hW(static_cast<size_t>(L) * num_layers * F_out * F_in);
-    std::vector<T> hY(static_cast<size_t>(B) * F_out, from_float_host(0.0f));
+    std::vector<T> hY(static_cast<size_t>(B) * seq_len * F_out, from_float_host(0.0f));
     std::vector<int> hIndices(B);
 
     for(auto& x : hX) 
@@ -92,7 +93,7 @@ int main() {
 
     // Launch shrink kernel via the templated wrapper
     T scaleT = from_float_host(scale);
-    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, num_layers, layer_idx, scaleT, B);
+    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, seq_len, num_layers, layer_idx, scaleT, B*seq_len);
 
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -111,9 +112,10 @@ int main() {
     }
 
     // Optional: basic CPU verification (float)
-    std::vector<float> refY(static_cast<size_t>(B) * F_out, 0.0f);
-    for (int b = 0; b < B; ++b) {
-        const int idx = hIndices[b] * num_layers + layer_idx;
+    std::vector<float> refY(static_cast<size_t>(B) * seq_len * F_out, 0.0f);
+    for (int b = 0; b < B * seq_len; ++b) {
+        const int b_seq = b / seq_len;
+        const int idx = hIndices[b_seq] * num_layers + layer_idx;
         for (int j = 0; j < F_out; ++j) {
             float acc = 0.0f;
             const size_t wBase = static_cast<size_t>(idx) * F_out * F_in + static_cast<size_t>(j) * F_in;
