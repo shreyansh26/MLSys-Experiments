@@ -3,9 +3,16 @@ from typing import Optional
 import torch
 import triton
 import triton.language as tl
+import pdb
+
+# Track which autotune keys have already been tuned per device to avoid extra warmups
+# Keys mirror the Triton autotune keys for each kernel: SHRINK -> F_IN; EXPAND -> (F_IN, F_OUT)
+_TUNED_SHRINK_KEYS = set()  # {(device_index, F_IN)}
+_TUNED_EXPAND_KEYS = set()  # {(device_index, F_IN, F_OUT)}
 
 def _cdiv(a, b):
     return (a + b - 1) // b
+
 
 # Each program computes a single output Y[b, j]
 @triton.autotune(
@@ -131,7 +138,7 @@ def bgmv_expand_kernel(
     idx_b = tl.load(indices_ptr + b_seq)
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
-    # 64-bit constants for pointer arithmetic
+    # 64-bit constants
     FIN64 = tl.full((), F_IN, dtype=tl.int64)
     FOUT64 = tl.full((), F_OUT, dtype=tl.int64)
     idx64 = idx.to(tl.int64)
@@ -186,7 +193,7 @@ def bgmv_triton(
     Y: torch.Tensor,      # [B, F_out], dtype in {float32, float16, bfloat16}, contiguous
     X: torch.Tensor,      # [B, F_in],  same dtype as Y, contiguous
     W: torch.Tensor,      # [L * num_layers, F_out, F_in], contiguous
-    indices: torch.Tensor,# [B], int32/int64; values in [0, L)
+    indices: torch.Tensor,# [B], int64/int64; values in [0, L)
     *,
     seq_len: int,
     num_layers: int,
@@ -204,6 +211,7 @@ def bgmv_triton(
     assert Y.dtype == X.dtype == W.dtype
     assert Y.is_contiguous() and X.is_contiguous() and W.is_contiguous()
 
+    SEQ_LEN = seq_len
     # If we receive 3-D tensors, flatten tokens
     if X.ndim == 3 and Y.ndim == 3:
         B, n, fin = X.shape
@@ -211,6 +219,8 @@ def bgmv_triton(
         assert n == n2, "X and Y must have same sequence length"
         X = X.contiguous().view(B * n, fin)
         Y = Y.contiguous().view(B * n, fout)
+
+        # SEQ_LEN = n
 
         ## No need to broadcast indices because that is handled in the kernel
 
@@ -243,39 +253,57 @@ def bgmv_triton(
     F_IN_i = int(F_in)
     F_OUT_i = int(F_out)
     B_i = int(T)
-    SEQ_LEN_i = int(seq_len)
+    SEQ_LEN_i = int(SEQ_LEN)
 
     if F_in < F_out:
         # EXPAND
         def grid(meta):
             return (_cdiv(F_OUT_i, meta['BLOCK_M']), B_i)
+                # Warmup only once per autotune key (device, F_IN, F_OUT)
         if accumulate:
-            # Work around potential in-kernel accumulate issues by computing into a temp and adding
-            Y_tmp = torch.empty_like(Y)
-            bgmv_expand_kernel[grid](
-                Y_tmp, X, W, indices,
-                float(scale),
-                F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
-                B_i,
-                SEQ_LEN_i,
-                out_is_fp16, out_is_bf16,
-                False,
-            )
-            Y.add_(Y_tmp)
-        else:
-            bgmv_expand_kernel[grid](
-                Y, X, W, indices,
-                float(scale),
-                F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
-                B_i,
-                SEQ_LEN_i,
-                out_is_fp16, out_is_bf16,
-                False,
-            )
+            device_idx = Y.device.index if Y.is_cuda else -1
+            key = (device_idx, F_IN_i, F_OUT_i)
+            if key not in _TUNED_EXPAND_KEYS:
+                tmpY = torch.empty_like(Y)
+                bgmv_expand_kernel[grid](
+                    tmpY, X, W, indices,
+                    float(scale),
+                    F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+                    B_i,
+                    SEQ_LEN_i,
+                    out_is_fp16, out_is_bf16,
+                    False,
+                )
+                _TUNED_EXPAND_KEYS.add(key)
+        bgmv_expand_kernel[grid](
+            Y, X, W, indices,
+            float(scale),
+            F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+            B_i,
+            SEQ_LEN_i,
+            out_is_fp16, out_is_bf16,
+            bool(accumulate),
+        )
     else:
         # SHRINK
         def grid(meta):
             return (F_OUT_i, B_i)
+                # Warmup only once per autotune key (device, F_IN)
+        if accumulate:
+            device_idx = Y.device.index if Y.is_cuda else -1
+            key = (device_idx, F_IN_i)
+            if key not in _TUNED_SHRINK_KEYS:
+                tmpY = torch.empty_like(Y)
+                bgmv_shrink_kernel[grid](
+                    tmpY, X, W, indices,
+                    float(scale),
+                    F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+                    B_i,
+                    SEQ_LEN_i,
+                    out_is_fp16, out_is_bf16,
+                    False,
+                )
+                _TUNED_SHRINK_KEYS.add(key)
         bgmv_shrink_kernel[grid](
             Y, X, W, indices,
             float(scale),
