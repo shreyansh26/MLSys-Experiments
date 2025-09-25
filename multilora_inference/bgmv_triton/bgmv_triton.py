@@ -45,14 +45,14 @@ def bgmv_shrink_kernel(
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
     # Pointer bases (use 64-bit offsets)
-    idx32 = idx.to(tl.int32)
-    j32 = pid_j.to(tl.int32)
-    b32 = pid_b.to(tl.int32)
-    FOUT32 = tl.full((), F_OUT, dtype=tl.int32)
-    FIN32 = tl.full((), F_IN, dtype=tl.int32)
+    idx64 = idx.to(tl.int64)
+    j64 = pid_j.to(tl.int64)
+    b64 = pid_b.to(tl.int64)
+    FOUT64 = tl.full((), F_OUT, dtype=tl.int64)
+    FIN64 = tl.full((), F_IN, dtype=tl.int64)
 
-    w_row_base = (idx32 * FOUT32 + j32) * FIN32
-    x_base = b32 * FIN32
+    w_row_base = (idx64 * FOUT64 + j64) * FIN64
+    x_base = b64 * FIN64
 
     # Accumulator
     acc = tl.zeros((), dtype=tl.float32)
@@ -61,16 +61,16 @@ def bgmv_shrink_kernel(
     for k_off in tl.range(0, F_IN, BLOCK_K, num_stages=2):
         k = k_off + k0
         k_mask = k < F_IN
-        k32 = k.to(tl.int32)
+        k64 = k.to(tl.int64)
 
-        w = tl.load(W_ptr + w_row_base + k32, mask=j_in & k_mask, other=0).to(tl.float32)
-        x = tl.load(X_ptr + x_base + k32, mask=b_in & k_mask, other=0).to(tl.float32)
+        w = tl.load(W_ptr + w_row_base + k64, mask=j_in & k_mask, other=0).to(tl.float32)
+        x = tl.load(X_ptr + x_base + k64, mask=b_in & k_mask, other=0).to(tl.float32)
         acc += tl.sum(w * x, axis=0)
 
     acc = acc * tl.full((), scale, dtype=tl.float32)
 
-    # Writeback
-    y_ptr = Y_ptr + (pid_b * F_OUT + pid_j)
+    # Writeback (use 64-bit offsets)
+    y_ptr = Y_ptr + (pid_b.to(tl.int64) * tl.full((), F_OUT, dtype=tl.int64) + pid_j.to(tl.int64))
     
     if ADD_TO_Y:
         y_old = tl.load(y_ptr, mask=b_in & j_in, other=0).to(tl.float32)
@@ -131,15 +131,15 @@ def bgmv_expand_kernel(
     idx_b = tl.load(indices_ptr + b_seq)
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
-    # 32-bit constants
-    FIN32 = tl.full((), F_IN, dtype=tl.int32)
-    FOUT32 = tl.full((), F_OUT, dtype=tl.int32)
-    idx32 = idx.to(tl.int32)
-    b32 = pid_b.to(tl.int32)
+    # 64-bit constants for pointer arithmetic
+    FIN64 = tl.full((), F_IN, dtype=tl.int64)
+    FOUT64 = tl.full((), F_OUT, dtype=tl.int64)
+    idx64 = idx.to(tl.int64)
+    b64 = pid_b.to(tl.int64)
 
     # Base pointers
-    x_base = b32 * FIN32
-    w_base0 = (idx32 * FOUT32 + j0.to(tl.int32)) * FIN32  # base for row j0
+    x_base = b64 * FIN64
+    w_base0 = (idx64 * FOUT64 + j0.to(tl.int64)) * FIN64  # base for row j0
 
     # Accumulator [BLOCK_M]
     acc = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -148,14 +148,14 @@ def bgmv_expand_kernel(
     for k_off in tl.range(0, F_IN, BLOCK_K, num_stages=2):
         k = k_off + k0
         k_mask = k < F_IN
-        k32 = k.to(tl.int32)
+        k64 = k.to(tl.int64)
 
         # X: [BLOCK_K]
-        x = tl.load(X_ptr + x_base + k32, mask=k_mask, other=0).to(tl.float32)
+        x = tl.load(X_ptr + x_base + k64, mask=k_mask, other=0).to(tl.float32)
 
         # W block: [BLOCK_M, BLOCK_K]
-        row_offsets = (tl.arange(0, BLOCK_M).to(tl.int32) * FIN32)[:, None]
-        w_ptrs = W_ptr + (w_base0 + row_offsets) + k32[None, :]
+        row_offsets = (tl.arange(0, BLOCK_M).to(tl.int64) * FIN64)[:, None]
+        w_ptrs = W_ptr + (w_base0 + row_offsets) + k64[None, :]
         w = tl.load(w_ptrs, mask=(m_mask[:, None] & k_mask[None, :]), other=0).to(tl.float32)
 
         # Reduction across K
@@ -163,8 +163,8 @@ def bgmv_expand_kernel(
 
     acc = acc * tl.full((), scale, dtype=tl.float32)
 
-    # Write back to Y[b, offs_m]
-    y_ptr = Y_ptr + (pid_b * F_OUT + offs_m)
+    # Write back to Y[b, offs_m] (use 64-bit offsets)
+    y_ptr = Y_ptr + (pid_b.to(tl.int64) * FOUT64 + offs_m.to(tl.int64))
     
     if ADD_TO_Y:
         y_old = tl.load(y_ptr, mask=m_mask, other=0).to(tl.float32)
@@ -249,15 +249,29 @@ def bgmv_triton(
         # EXPAND
         def grid(meta):
             return (_cdiv(F_OUT_i, meta['BLOCK_M']), B_i)
-        bgmv_expand_kernel[grid](
-            Y, X, W, indices,
-            float(scale),
-            F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
-            B_i,
-            SEQ_LEN_i,
-            out_is_fp16, out_is_bf16,
-            bool(accumulate),
-        )
+        if accumulate:
+            # Work around potential in-kernel accumulate issues by computing into a temp and adding
+            Y_tmp = torch.empty_like(Y)
+            bgmv_expand_kernel[grid](
+                Y_tmp, X, W, indices,
+                float(scale),
+                F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+                B_i,
+                SEQ_LEN_i,
+                out_is_fp16, out_is_bf16,
+                False,
+            )
+            Y.add_(Y_tmp)
+        else:
+            bgmv_expand_kernel[grid](
+                Y, X, W, indices,
+                float(scale),
+                F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+                B_i,
+                SEQ_LEN_i,
+                out_is_fp16, out_is_bf16,
+                False,
+            )
     else:
         # SHRINK
         def grid(meta):

@@ -28,9 +28,12 @@ def lora_bgmv_triton(y: torch.Tensor,
     rank = A.size(1)
     L = A.size(0)
 
+    # Normalize indices to int32 for Triton and make contiguous
+    I32 = I.to(torch.int32).contiguous()
+
     y_intermediate = torch.zeros(Bsz * n, rank, dtype=x.dtype, device=x.device)
 
-    bgmv_triton(y_intermediate, x, A, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=1.0, accumulate=False)
-    bgmv_triton(y, y_intermediate, B, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=float(scale), accumulate=True) # Apply scale only in final matmul
+    bgmv_triton(y_intermediate, x, A.contiguous(), I32, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=1.0, accumulate=False)
+    bgmv_triton(y, y_intermediate, B.contiguous(), I32, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), scale=float(scale), accumulate=True) # Apply scale only in final matmul
 
     return y
