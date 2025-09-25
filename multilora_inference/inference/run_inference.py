@@ -155,7 +155,7 @@ def main() -> None:
         raise FileNotFoundError(f"Checkpoint directory does not exist: {ckpt_dir}")
 
     if args.inference_mode == "base_model":
-        _, base_model_name = get_base_model_config(ckpt_dir)
+        _, base_model_name, _ = get_base_model_config(ckpt_dir)
         model = AutoModelForCausalLM.from_pretrained(
             base_model_name,
             torch_dtype=torch_dtype,
@@ -168,7 +168,7 @@ def main() -> None:
             device_map=None,
         )
     elif args.inference_mode == "custom_lora":
-        base_model_config, base_model_name = get_base_model_config(ckpt_dir)
+        base_model_config, base_model_name, adapter_config = get_base_model_config(ckpt_dir)
         lora_A_weights, lora_B_weights = get_A_B_weights(ckpt_dir, base_model_config)
 
         model = LlamaForCausalLM.from_pretrained(
@@ -178,6 +178,7 @@ def main() -> None:
         )
         model.model.lora_A_weights = lora_A_weights
         model.model.lora_B_weights = lora_B_weights
+        model.model.lora_scale = adapter_config["lora_alpha"] / adapter_config["r"]
     else:
         raise ValueError(f"Invalid inference mode: {args.inference_mode}")
     
@@ -246,7 +247,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql_2025-09-23_09:47:35/epoch-2" --dataset-name text_to_sql --inference-mode peft
-    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/numina_math_2025-09-23_08:49:10/epoch-2" --dataset-name text_to_sql --inference-mode custom_lora
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/text_to_sql/epoch-2" --dataset-name text_to_sql --inference-mode peft
+    # CUDA_VISIBLE_DEVICES=0 python run_inference.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/numina_math/epoch-2" --dataset-name text_to_sql --inference-mode custom_lora
     # CUDA_VISIBLE_DEVICES=0 python run_inference.py --dataset-name <name> --epoch 2 --sample-index 0
     main()

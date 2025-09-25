@@ -158,19 +158,18 @@ class LlamaMLP(nn.Module):
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_gate = lora_A_weights["gate_proj"][layer_idx].to(gate_proj)
             B_gate = lora_B_weights["gate_proj"][layer_idx].to(gate_proj)
-            gate_proj = gate_proj + torch.einsum("fi,bni->bnf", B_gate, torch.einsum("fi,bni->bnf", A_gate, x))
-
+            gate_proj = gate_proj + torch.einsum("fi,bni->bnf", B_gate, torch.einsum("fi,bni->bnf", A_gate, x)) * getattr(self, "lora_scale", 1.0)
         up_proj = self.up_proj(x)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_up = lora_A_weights["up_proj"][layer_idx].to(up_proj)
             B_up = lora_B_weights["up_proj"][layer_idx].to(up_proj)
-            up_proj = up_proj + torch.einsum("fi,bni->bnf", B_up, torch.einsum("fi,bni->bnf", A_up, x))
+            up_proj = up_proj + torch.einsum("fi,bni->bnf", B_up, torch.einsum("fi,bni->bnf", A_up, x)) * getattr(self, "lora_scale", 1.0)
         act = self.act_fn(gate_proj) * up_proj
         down_proj = self.down_proj(act)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_down = lora_A_weights["down_proj"][layer_idx].to(down_proj)
             B_down = lora_B_weights["down_proj"][layer_idx].to(down_proj)
-            down_proj = down_proj + torch.einsum("fi,bni->bnf", B_down, torch.einsum("fi,bni->bnf", A_down, act))
+            down_proj = down_proj + torch.einsum("fi,bni->bnf", B_down, torch.einsum("fi,bni->bnf", A_down, act)) * getattr(self, "lora_scale", 1.0)
         return down_proj
 
 
@@ -257,21 +256,21 @@ class LlamaAttention(nn.Module):
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_q = lora_A_weights["q_proj"][layer_idx].to(query_states)
             B_q = lora_B_weights["q_proj"][layer_idx].to(query_states)
-            query_states = query_states + torch.einsum("fi,bni->bnf", B_q, torch.einsum("fi,bni->bnf", A_q, hidden_states))
+            query_states = query_states + torch.einsum("fi,bni->bnf", B_q, torch.einsum("fi,bni->bnf", A_q, hidden_states)) * getattr(self, "lora_scale", 1.0)
         query_states = query_states.view(hidden_shape).transpose(1, 2)
 
         key_states = self.k_proj(hidden_states)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_k = lora_A_weights["k_proj"][layer_idx].to(key_states)
             B_k = lora_B_weights["k_proj"][layer_idx].to(key_states)
-            key_states = key_states + torch.einsum("fi,bni->bnf", B_k, torch.einsum("fi,bni->bnf", A_k, hidden_states))
+            key_states = key_states + torch.einsum("fi,bni->bnf", B_k, torch.einsum("fi,bni->bnf", A_k, hidden_states)) * getattr(self, "lora_scale", 1.0)
         key_states = key_states.view(hidden_shape).transpose(1, 2)
         
         value_states = self.v_proj(hidden_states)
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_v = lora_A_weights["v_proj"][layer_idx].to(value_states)
             B_v = lora_B_weights["v_proj"][layer_idx].to(value_states)
-            value_states = value_states + torch.einsum("fi,bni->bnf", B_v, torch.einsum("fi,bni->bnf", A_v, hidden_states))
+            value_states = value_states + torch.einsum("fi,bni->bnf", B_v, torch.einsum("fi,bni->bnf", A_v, hidden_states)) * getattr(self, "lora_scale", 1.0)
         value_states = value_states.view(hidden_shape).transpose(1, 2)
 
         cos, sin = position_embeddings
@@ -302,7 +301,7 @@ class LlamaAttention(nn.Module):
         if lora_A_weights is not None and lora_B_weights is not None and layer_idx is not None:
             A_o = lora_A_weights["o_proj"][layer_idx].to(attn_output)
             B_o = lora_B_weights["o_proj"][layer_idx].to(attn_output)
-            attn_output_out = attn_output_out + torch.einsum("fi,bni->bnf", B_o, torch.einsum("fi,bni->bnf", A_o, attn_output))
+            attn_output_out = attn_output_out + torch.einsum("fi,bni->bnf", B_o, torch.einsum("fi,bni->bnf", A_o, attn_output)) * getattr(self, "lora_scale", 1.0)
         return attn_output_out, attn_weights
 
 
@@ -396,6 +395,7 @@ class LlamaModel(LlamaPreTrainedModel):
         # explicit forward args.
         self._lora_A_weights = None
         self._lora_B_weights = None
+        self._lora_scale = 1.0
 
     def _propagate_lora_to_submodules(self) -> None:
         """
@@ -411,6 +411,8 @@ class LlamaModel(LlamaPreTrainedModel):
             layer.self_attn.lora_B_weights = self._lora_B_weights
             layer.mlp.lora_A_weights = self._lora_A_weights
             layer.mlp.lora_B_weights = self._lora_B_weights
+            layer.self_attn.lora_scale = self._lora_scale
+            layer.mlp.lora_scale = self._lora_scale
 
     @property
     def lora_A_weights(self):
@@ -428,6 +430,15 @@ class LlamaModel(LlamaPreTrainedModel):
     @lora_B_weights.setter
     def lora_B_weights(self, value):
         self._lora_B_weights = value
+        self._propagate_lora_to_submodules()
+
+    @property
+    def lora_scale(self):
+        return self._lora_scale
+
+    @lora_scale.setter
+    def lora_scale(self, value):
+        self._lora_scale = value
         self._propagate_lora_to_submodules()
 
     @check_model_inputs
