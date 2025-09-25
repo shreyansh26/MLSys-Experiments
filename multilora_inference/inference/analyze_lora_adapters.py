@@ -8,10 +8,10 @@ from typing import List
 
 def get_base_model_config(checkpoint_path: str):
     path = os.path.join(checkpoint_path, "adapter_config.json")
-    config = json.load(open(path))
-    base_model_name = config['base_model_name_or_path']
+    adapter_config = json.load(open(path))
+    base_model_name = adapter_config['base_model_name_or_path']
     base_model_config = AutoConfig.from_pretrained(base_model_name)
-    return base_model_config, base_model_name
+    return base_model_config, base_model_name, adapter_config
 
 def analyze_adapter_weights(checkpoint_path: str, base_model_config: AutoConfig):
     lora_adapter_path = os.path.join(checkpoint_path, "adapter_model.safetensors")
@@ -162,7 +162,7 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
 
 if __name__ == "__main__":
     checkpoint_path = "/mnt/ssd2/shreyansh/models/multilora/ifeval_like_data/epoch-2"
-    base_model_config, base_model_name = get_base_model_config(checkpoint_path)
+    base_model_config, base_model_name, adapter_config = get_base_model_config(checkpoint_path)
     analyze_adapter_weights(checkpoint_path, base_model_config)
 
     adapter_names = ["ifeval_like_data", "multilingual_cohere_aya", "opc_evol_instruct", "text_to_sql", "infinity_instruct", "numina_math", "opc_sft_educational"]
