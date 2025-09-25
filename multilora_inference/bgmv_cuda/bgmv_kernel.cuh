@@ -253,8 +253,10 @@ __global__ void bgmv_expand_kernel(T* Y,
     // move the reduced sum to lane 0 within the tile (tile leader)
     sum = g.shfl(sum, 0);
 
-    if(threadIdx.x == 0) {
-        Y[b * F_out + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y] = from_float_device<T>(sum);
+    if (threadIdx.x == 0) {
+        const int out_idx = b * F_out + (tile_idx * tz * ty) + (threadIdx.z * ty) + threadIdx.y;
+        const float prev = to_float_device<T>(Y[out_idx]);
+        Y[out_idx] = from_float_device<T>(prev + sum);
     }
 }
 

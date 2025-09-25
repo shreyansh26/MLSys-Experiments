@@ -74,6 +74,7 @@ inline void dispatch_dims_and_launch(torch::Tensor Y, torch::Tensor X, torch::Te
                     case 1024: return launch_impl<T, 1024, 1024>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 512:  return launch_impl<T, 1024, 512>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 256:  return launch_impl<T, 1024, 256>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    case 64:  return launch_impl<T, 1024, 64>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 16:  return launch_impl<T, 1024, 16>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     default: break;
                 }
@@ -83,6 +84,15 @@ inline void dispatch_dims_and_launch(torch::Tensor Y, torch::Tensor X, torch::Te
                     case 2048: return launch_impl<T, 2048, 2048>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 1024: return launch_impl<T, 2048, 1024>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 512:  return launch_impl<T, 2048, 512>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    default: break;
+                }
+                break;
+            case 3072:
+                switch (F_out) {
+                    case 2048: return launch_impl<T, 3072, 2048>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    case 1024: return launch_impl<T, 3072, 1024>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    case 512:  return launch_impl<T, 3072, 512>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    case 64:  return launch_impl<T, 3072, 64>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     default: break;
                 }
                 break;
@@ -100,6 +110,7 @@ inline void dispatch_dims_and_launch(torch::Tensor Y, torch::Tensor X, torch::Te
                     case 8192: return launch_impl<T, 8192, 8192>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 4096: return launch_impl<T, 8192, 4096>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     case 2048: return launch_impl<T, 8192, 2048>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                    case 64: return launch_impl<T, 8192, 64>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                     default: break;
                 }
                 break;
@@ -252,6 +263,7 @@ inline void dispatch_dims_and_launch(torch::Tensor Y, torch::Tensor X, torch::Te
                         case 512:   return launch_impl<T, 64, 512>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                         case 1024:  return launch_impl<T, 64, 1024>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                         case 2048:  return launch_impl<T, 64, 2048>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
+                        case 3072:  return launch_impl<T, 64, 3072>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                         case 4096:  return launch_impl<T, 64, 4096>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                         case 8192:  return launch_impl<T, 64, 8192>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
                         case 16384: return launch_impl<T, 64, 16384>(Y, X, W, indices_i32, seqlen, num_layers, layer_idx, scale, B);
@@ -286,7 +298,7 @@ inline void dispatch_dims_and_launch(torch::Tensor Y, torch::Tensor X, torch::Te
             }
         }
     }
-    throw std::runtime_error("Unsupported (F_in, F_out) for bgmv");
+    throw std::runtime_error("Unsupported (F_in=" + std::to_string(F_in) + ", F_out=" + std::to_string(F_out) + ") for bgmv");
 }
 
 } // namespace
