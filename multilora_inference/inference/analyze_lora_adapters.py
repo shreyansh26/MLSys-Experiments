@@ -146,7 +146,7 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
             B_weights[module] = torch.stack(B_weights[module], dim=0).transpose(0, 1)
 
             print(A_weights[module].shape)
-    elif mode == "bgmv":
+    elif mode.startswith("bgmv"):
         for module in modules_with_lora:
             print(len(A_weights[module]))
             A_weights[module] = torch.stack(A_weights[module], dim=0).transpose(0, 1)
@@ -170,3 +170,6 @@ if __name__ == "__main__":
     A_weights, B_weights = get_multilora_A_B_weights(checkpoint_path_list, base_model_config)
     print(A_weights.keys())
     print(B_weights.keys())
+
+    print(A_weights["q_proj"].shape)
+    print(B_weights["q_proj"].shape)
