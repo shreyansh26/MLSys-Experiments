@@ -33,17 +33,10 @@ LORA_MAPPING = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run inference with LoRA-adapted model")
     parser.add_argument(
-        "--inference-mode",
-        type=str,
-        default="custom_lora",
-        choices=["custom_lora"],
-        help="Inference mode",
-    )
-    parser.add_argument(
         "--lora-inference-mode",
         type=str,
         default="gbmm",
-        choices=["gbmm", "bgmv"],
+        choices=["bgmv_cuda", "bgmv_triton", "gbmm"],
         help="Multi-LoRA inference mode",
     )
     parser.add_argument(
@@ -219,20 +212,19 @@ def main() -> None:
     if not all(ckpt_dir.exists() for ckpt_dir in ckpt_dirs):
         raise FileNotFoundError(f"Checkpoint directory does not exist: {ckpt_dirs}")
 
-    if args.inference_mode == "custom_lora":
-        base_model_config, base_model_name, adapter_config = get_base_model_config(ckpt_dirs[0])
-        lora_A_weights, lora_B_weights = get_multilora_A_B_weights(ckpt_dirs, base_model_config, mode=args.lora_inference_mode)
+    base_model_config, base_model_name, adapter_config = get_base_model_config(ckpt_dirs[0])
+    lora_A_weights, lora_B_weights = get_multilora_A_B_weights(ckpt_dirs, base_model_config, mode=args.lora_inference_mode)
 
-        model = LlamaForCausalLM.from_pretrained(
-            base_model_name,
-            torch_dtype=torch_dtype,
-            device_map=None,
-        )
-        model.model.lora_A_weights = lora_A_weights
-        model.model.lora_B_weights = lora_B_weights
-        model.model.lora_scale = adapter_config["lora_alpha"] / adapter_config["r"]
-    else:
-        raise ValueError(f"Invalid inference mode: {args.inference_mode}")
+    print(lora_A_weights["q_proj"].shape)
+
+    model = LlamaForCausalLM.from_pretrained(
+        base_model_name,
+        torch_dtype=torch_dtype,
+        device_map=None,
+    )
+    model.model.lora_A_weights = lora_A_weights
+    model.model.lora_B_weights = lora_B_weights
+    model.model.lora_scale = adapter_config["lora_alpha"] / adapter_config["r"]
     
     model = model.to(device)
     model.eval()
@@ -257,7 +249,19 @@ def main() -> None:
     inputs = build_chat_inputs(tokenizer, instructions, device)
     print("-" * 100)
 
-    # TODO: Have a warmup step
+    # Warmup: run a minimal generation to compile kernels before timing
+    with torch.no_grad():
+        model.generate(
+            **inputs,
+            max_new_tokens=5,
+            do_sample=False,
+            temperature=1.0,
+            top_p=1.0,
+            pad_token_id=tokenizer.eos_token_id,
+            lora_indices=lora_indices,
+            lora_inference_mode=args.lora_inference_mode
+        )
+
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     start_time = time.perf_counter()
@@ -309,7 +313,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --inference-mode custom_lora --lora-inference-mode bgmv
-    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --checkpoint-dir "/mnt/ssd2/shreyansh/models/multilora/numina_math/epoch-2" --dataset-name text_to_sql --inference-mode custom_lora --lora-inference-mode bgmv
-    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --dataset-name <name> --epoch 2 --sample-index 0
+    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --lora-inference-mode bgmv_cuda
+    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --lora-inference-mode bgmv_triton
     main()
