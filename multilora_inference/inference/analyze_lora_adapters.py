@@ -141,22 +141,17 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
 
     if mode == "gbmm":
         for module in modules_with_lora:
-            print(len(A_weights[module]))
             A_weights[module] = torch.stack(A_weights[module], dim=0).transpose(0, 1)
             B_weights[module] = torch.stack(B_weights[module], dim=0).transpose(0, 1)
 
-            print(A_weights[module].shape)
     elif mode.startswith("bgmv"):
         for module in modules_with_lora:
-            print(len(A_weights[module]))
             A_weights[module] = torch.stack(A_weights[module], dim=0).transpose(0, 1)
             nlayers, nlora, r, d = A_weights[module].shape
             A_weights[module] = A_weights[module].reshape(-1, r, d).contiguous()
             B_weights[module] = torch.stack(B_weights[module], dim=0).transpose(0, 1)
             nlayers, nlora, r, d = B_weights[module].shape
             B_weights[module] = B_weights[module].reshape(-1, r, d).contiguous()
-
-            print(A_weights[module].shape)
 
     return A_weights, B_weights
 

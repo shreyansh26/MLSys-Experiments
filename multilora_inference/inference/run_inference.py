@@ -198,6 +198,17 @@ def main() -> None:
     print(f"Resolved dataset indices: {sample_indices}")
     print("-" * 100)
 
+    # Warmup: run a minimal generation
+    with torch.no_grad():
+        model.generate(
+            **inputs,
+            max_new_tokens=5,
+            do_sample=False,
+            temperature=1.0,
+            top_p=1.0,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     start_time = time.perf_counter()
