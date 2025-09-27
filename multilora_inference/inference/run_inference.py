@@ -175,6 +175,7 @@ def main() -> None:
             base_model_name,
             torch_dtype=torch_dtype,
             device_map=None,
+            attn_implementation="sdpa",
         )
         model.model.lora_A_weights = lora_A_weights
         model.model.lora_B_weights = lora_B_weights
