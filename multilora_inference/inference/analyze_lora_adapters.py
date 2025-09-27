@@ -143,24 +143,25 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
             A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
             B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
 
-    # No LoRA case
-    for module in modules_with_lora:
-        A_weights_t[module] = []
-        B_weights_t[module] = []
-    
-    for layer in range(base_model_config.num_hidden_layers):
+    if mode == "gbmm":
+        # No LoRA case
         for module in modules_with_lora:
-            if module in ["q_proj", "k_proj", "v_proj", "o_proj"]:
-                module_name = "self_attn." + module
-            elif module in ["up_proj", "gate_proj", "down_proj"]:
-                module_name = "mlp." + module
+            A_weights_t[module] = []
+            B_weights_t[module] = []
+        
+        for layer in range(base_model_config.num_hidden_layers):
+            for module in modules_with_lora:
+                if module in ["q_proj", "k_proj", "v_proj", "o_proj"]:
+                    module_name = "self_attn." + module
+                elif module in ["up_proj", "gate_proj", "down_proj"]:
+                    module_name = "mlp." + module
 
-            A_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"]))
-            B_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"]))
+                A_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"]))
+                B_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"]))
 
-    for module in modules_with_lora:
-        A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
-        B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
+        for module in modules_with_lora:
+            A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
+            B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
 
     if mode == "gbmm":
         for module in modules_with_lora:
