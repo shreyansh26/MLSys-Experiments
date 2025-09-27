@@ -95,6 +95,10 @@ def get_A_B_weights(checkpoint_path: str, base_model_config: AutoConfig):
             A_weights[module].append(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"])
             B_weights[module].append(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"])
 
+            # To handle no LoRA case
+            A_weights[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"]))
+            B_weights[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"]))
+
     for module in modules_with_lora:
         A_weights[module] = torch.stack(A_weights[module], dim=0)
         B_weights[module] = torch.stack(B_weights[module], dim=0)
@@ -137,7 +141,26 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
 
         for module in modules_with_lora:
             A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
-            B_weights[module].append(torch.stack(B_weights_t [module], dim=0))
+            B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
+
+    # No LoRA case
+    for module in modules_with_lora:
+        A_weights_t[module] = []
+        B_weights_t[module] = []
+    
+    for layer in range(base_model_config.num_hidden_layers):
+        for module in modules_with_lora:
+            if module in ["q_proj", "k_proj", "v_proj", "o_proj"]:
+                module_name = "self_attn." + module
+            elif module in ["up_proj", "gate_proj", "down_proj"]:
+                module_name = "mlp." + module
+
+            A_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_A.weight"]))
+            B_weights_t[module].append(torch.zeros_like(tensors[f"base_model.model.model.layers.{layer}.{module_name}.lora_B.weight"]))
+
+    for module in modules_with_lora:
+        A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
+        B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
 
     if mode == "gbmm":
         for module in modules_with_lora:
@@ -158,11 +181,11 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
 if __name__ == "__main__":
     checkpoint_path = "/mnt/ssd2/shreyansh/models/multilora/ifeval_like_data/epoch-2"
     base_model_config, base_model_name, adapter_config = get_base_model_config(checkpoint_path)
-    analyze_adapter_weights(checkpoint_path, base_model_config)
+    # analyze_adapter_weights(checkpoint_path, base_model_config)
 
     adapter_names = ["ifeval_like_data", "multilingual_cohere_aya", "opc_evol_instruct", "text_to_sql", "infinity_instruct", "numina_math", "opc_sft_educational"]
     checkpoint_path_list = [f"/mnt/ssd2/shreyansh/models/multilora/{adapter_name}/epoch-2" for adapter_name in adapter_names]
-    A_weights, B_weights = get_multilora_A_B_weights(checkpoint_path_list, base_model_config)
+    A_weights, B_weights = get_multilora_A_B_weights(checkpoint_path_list, base_model_config, mode="bgmv_cuda")
     print(A_weights.keys())
     print(B_weights.keys())
 

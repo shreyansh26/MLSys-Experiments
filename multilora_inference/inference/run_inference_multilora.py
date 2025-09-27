@@ -137,7 +137,7 @@ def build_chat_inputs(tokenizer: Any, instructions: list[str], device: torch.dev
         ]
         prompts.append(tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True))
 
-    model_inputs = tokenizer(prompts, return_tensors="pt", padding=True)
+    model_inputs = tokenizer(prompts, return_tensors="pt", padding="longest", truncation=True)
     inputs_on_device = {k: v.to(device) for k, v in model_inputs.items()}
     return inputs_on_device
 
@@ -215,13 +215,11 @@ def main() -> None:
     base_model_config, base_model_name, adapter_config = get_base_model_config(ckpt_dirs[0])
     lora_A_weights, lora_B_weights = get_multilora_A_B_weights(ckpt_dirs, base_model_config, mode=args.lora_inference_mode)
 
-    print(lora_A_weights["q_proj"].shape)
-
     model = LlamaForCausalLM.from_pretrained(
         base_model_name,
         torch_dtype=torch_dtype,
         device_map=None,
-        attn_implementation="sdpa",
+        attn_implementation="flash_attention_2",
     )
     model.model.lora_A_weights = lora_A_weights
     model.model.lora_B_weights = lora_B_weights
@@ -234,6 +232,7 @@ def main() -> None:
 
     dataset_names = list(LORA_MAPPING.keys())
     if dataset_names is not None and len(dataset_names) > 0:
+        # Only this flow taken for now
         instructions, reference_outputs, dataset_indices = get_instructions_outputs_from_datasets(
             dataset_names, DEFAULT_BATCH_SIZE
         )
@@ -246,7 +245,15 @@ def main() -> None:
         lora_indices = [LORA_MAPPING[args.dataset_name]] * DEFAULT_BATCH_SIZE
         print(lora_indices)
     
+
+    # Mark a random index as len(LORA_MAPPING) -> No LoRA case
+    random_idx = random.randint(0, DEFAULT_BATCH_SIZE - 1)
+    lora_indices[random_idx] = len(LORA_MAPPING)
+
     lora_indices = torch.tensor(lora_indices, device=device)
+    print("Number of LoRA adapters: ", len(LORA_MAPPING))
+    print("Batch LoRA indices: ", lora_indices)
+    
     inputs = build_chat_inputs(tokenizer, instructions, device)
     print("-" * 100)
 
