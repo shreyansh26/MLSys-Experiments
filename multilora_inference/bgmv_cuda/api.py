@@ -16,6 +16,7 @@ def lora_bgmv_cuda(y: torch.Tensor,
               I: torch.Tensor,
               num_layers: int = 1,
               layer_idx: int = 0,
+              num_lora_adapters: int = 0,
               scale: float = 1.0) -> torch.Tensor:
     """
     Compute Y = B @ (A @ X) scaled, using grouped BGMV shrink kernel.
@@ -42,7 +43,7 @@ def lora_bgmv_cuda(y: torch.Tensor,
 
     y_intermediate = torch.zeros(Bsz * n, rank, dtype=x.dtype, device=x.device)
 
-    _C.bgmv_forward(y_intermediate, x, A, I, int(seq_len), int(num_layers), int(layer_idx), 1.0)
-    _C.bgmv_forward(y, y_intermediate, B, I, int(seq_len), int(num_layers), int(layer_idx), float(scale)) # Apply scale only in final matmul
+    _C.bgmv_forward(y_intermediate, x, A, I, int(seq_len), int(num_layers), int(layer_idx), int(num_lora_adapters), 1.0)
+    _C.bgmv_forward(y, y_intermediate, B, I, int(seq_len), int(num_layers), int(layer_idx), int(num_lora_adapters), float(scale)) # Apply scale only in final matmul
 
     return y

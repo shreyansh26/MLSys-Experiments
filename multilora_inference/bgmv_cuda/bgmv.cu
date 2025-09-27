@@ -54,6 +54,7 @@ int main() {
     constexpr int layer_idx = 2;    // selected layer within adapter
     constexpr float scale = 0.25f;  // alpha / r
     constexpr int seq_len = 1024;
+    constexpr int num_lora_adapters = 100;
 
     // mode = "expand"
     constexpr int F_in = 16;
@@ -93,7 +94,7 @@ int main() {
 
     // Launch shrink kernel via the templated wrapper
     T scaleT = from_float_host(scale);
-    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, seq_len, num_layers, layer_idx, scaleT, B*seq_len);
+    bgmv_kernel<F_in, F_out, T>(dY, dX, dW, dIndices, seq_len, num_layers, layer_idx, num_lora_adapters, scaleT, B*seq_len);
 
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());

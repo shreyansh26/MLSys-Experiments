@@ -60,6 +60,7 @@ __global__ void bgmv_shrink_kernel(T* Y,
                                    const int seqlen,
                                    const int num_layers,
                                    const int layer_idx,
+                                   const int num_lora_adapters,
                                    const T scale) {
     auto block = cg::this_thread_block();
 
@@ -78,6 +79,10 @@ __global__ void bgmv_shrink_kernel(T* Y,
     __shared__ T X_shared[num_pipeline_stages * tile_size];
 
     __shared__ float y_warpwise[ty];
+
+    if (indices[b_seq] == num_lora_adapters) {
+        return;
+    }
 
     const int idx = indices[b_seq] * num_layers + layer_idx;
 
@@ -213,6 +218,7 @@ __global__ void bgmv_expand_kernel(T* Y,
                                    const int seqlen,
                                    const int num_layers,
                                    const int layer_idx,
+                                   const int num_lora_adapters,
                                    const T scale) {
     auto block = cg::this_thread_block();
     const int b = blockIdx.y;
@@ -226,6 +232,10 @@ __global__ void bgmv_expand_kernel(T* Y,
     static_assert(32 % tx == 0);
     constexpr int ty = 32 / tx;
     constexpr int tz = 4;
+
+    if (indices[b_seq] == num_lora_adapters) {
+        return;
+    }
 
     const int idx = indices[b_seq] * num_layers + layer_idx;
     
@@ -268,6 +278,7 @@ void bgmv_kernel(T* Y,
                  const int seqlen,
                  const int num_layers,
                  const int layer_idx,
+                 const int num_lora_adapters,
                  const T scale,
                  const int batch_size) {
     if constexpr (F_in < F_out) {
@@ -277,13 +288,13 @@ void bgmv_kernel(T* Y,
         int tz = 4;
         dim3 grid(F_out / (tz * ty), batch_size);
         dim3 block(tx, ty, tz);
-        bgmv_expand_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, scale);
+        bgmv_expand_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, num_lora_adapters, scale);
     }
     else {
         constexpr int vec_size = 16 / sizeof(T);
         assert(F_in % (vec_size * 32) == 0);
         dim3 grid(F_out, batch_size);
         dim3 block(32, 4);
-        bgmv_shrink_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, scale);
+        bgmv_shrink_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, num_lora_adapters, scale);
     }
 }
