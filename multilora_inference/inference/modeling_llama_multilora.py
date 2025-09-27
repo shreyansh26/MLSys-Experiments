@@ -165,11 +165,11 @@ class LlamaMLP(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_gate = lora_A_weights["gate_proj"].to(gate_proj)
                 B_gate = lora_B_weights["gate_proj"].to(gate_proj)
-                lora_bgmv_cuda_impl(gate_proj, x, A_gate, B_gate, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(gate_proj, x, A_gate, B_gate, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_gate = lora_A_weights["gate_proj"].to(gate_proj)
                 B_gate = lora_B_weights["gate_proj"].to(gate_proj)
-                lora_bgmv_triton_impl(gate_proj, x, A_gate, B_gate, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(gate_proj, x, A_gate, B_gate, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
 
@@ -182,11 +182,11 @@ class LlamaMLP(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_up = lora_A_weights["up_proj"].to(up_proj)
                 B_up = lora_B_weights["up_proj"].to(up_proj)
-                lora_bgmv_cuda_impl(up_proj, x, A_up, B_up, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(up_proj, x, A_up, B_up, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_up = lora_A_weights["up_proj"].to(up_proj)
                 B_up = lora_B_weights["up_proj"].to(up_proj)
-                lora_bgmv_triton_impl(up_proj, x, A_up, B_up, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(up_proj, x, A_up, B_up, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         act = self.act_fn(gate_proj) * up_proj
@@ -199,11 +199,11 @@ class LlamaMLP(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_down = lora_A_weights["down_proj"].to(down_proj)
                 B_down = lora_B_weights["down_proj"].to(down_proj)
-                lora_bgmv_cuda_impl(down_proj, act, A_down, B_down, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(down_proj, act, A_down, B_down, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_down = lora_A_weights["down_proj"].to(down_proj)
                 B_down = lora_B_weights["down_proj"].to(down_proj)
-                lora_bgmv_triton_impl(down_proj, act, A_down, B_down, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(down_proj, act, A_down, B_down, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         return down_proj
@@ -299,11 +299,11 @@ class LlamaAttention(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_q = lora_A_weights["q_proj"].to(query_states)
                 B_q = lora_B_weights["q_proj"].to(query_states)
-                lora_bgmv_cuda_impl(query_states, hidden_states, A_q, B_q, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(query_states, hidden_states, A_q, B_q, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_q = lora_A_weights["q_proj"].to(query_states)
                 B_q = lora_B_weights["q_proj"].to(query_states)
-                lora_bgmv_triton_impl(query_states, hidden_states, A_q, B_q, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(query_states, hidden_states, A_q, B_q, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         query_states = query_states.view(hidden_shape).transpose(1, 2)
@@ -317,11 +317,11 @@ class LlamaAttention(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_k = lora_A_weights["k_proj"].to(key_states)
                 B_k = lora_B_weights["k_proj"].to(key_states)
-                lora_bgmv_cuda_impl(key_states, hidden_states, A_k, B_k, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(key_states, hidden_states, A_k, B_k, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_k = lora_A_weights["k_proj"].to(key_states)
                 B_k = lora_B_weights["k_proj"].to(key_states)
-                lora_bgmv_triton_impl(key_states, hidden_states, A_k, B_k, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(key_states, hidden_states, A_k, B_k, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         key_states = key_states.view(hidden_shape).transpose(1, 2)
@@ -335,11 +335,11 @@ class LlamaAttention(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_v = lora_A_weights["v_proj"].to(value_states)
                 B_v = lora_B_weights["v_proj"].to(value_states)
-                lora_bgmv_cuda_impl(value_states, hidden_states, A_v, B_v, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(value_states, hidden_states, A_v, B_v, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_v = lora_A_weights["v_proj"].to(value_states)
                 B_v = lora_B_weights["v_proj"].to(value_states)
-                lora_bgmv_triton_impl(value_states, hidden_states, A_v, B_v, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(value_states, hidden_states, A_v, B_v, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         value_states = value_states.view(hidden_shape).transpose(1, 2)
@@ -377,11 +377,11 @@ class LlamaAttention(nn.Module):
             elif lora_inference_mode == "bgmv_cuda":
                 A_o = lora_A_weights["o_proj"].to(attn_output)
                 B_o = lora_B_weights["o_proj"].to(attn_output)
-                lora_bgmv_cuda_impl(attn_output_out, attn_output, A_o, B_o, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_cuda_impl(attn_output_out, attn_output, A_o, B_o, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             elif lora_inference_mode == "bgmv_triton":
                 A_o = lora_A_weights["o_proj"].to(attn_output)
                 B_o = lora_B_weights["o_proj"].to(attn_output)
-                lora_bgmv_triton_impl(attn_output_out, attn_output, A_o, B_o, lora_indices, num_layers=28, layer_idx=layer_idx, scale=getattr(self, "lora_scale", 1.0))
+                lora_bgmv_triton_impl(attn_output_out, attn_output, A_o, B_o, lora_indices, num_layers=self.num_hidden_layers, layer_idx=layer_idx, num_lora_adapters=self.num_lora_adapters, scale=getattr(self, "lora_scale", 1.0))
             else:
                 raise ValueError(f"Invalid LoRA inference mode: {lora_inference_mode}")
         return attn_output_out, attn_weights
@@ -482,6 +482,8 @@ class LlamaModel(LlamaPreTrainedModel):
         self._lora_A_weights = None
         self._lora_B_weights = None
         self._lora_scale = 1.0
+        self._num_lora_adapters = 0
+        self._num_hidden_layers = 0
 
     def _propagate_lora_to_submodules(self) -> None:
         """
@@ -499,6 +501,10 @@ class LlamaModel(LlamaPreTrainedModel):
             layer.mlp.lora_B_weights = self._lora_B_weights
             layer.self_attn.lora_scale = self._lora_scale
             layer.mlp.lora_scale = self._lora_scale
+            layer.self_attn.num_lora_adapters = self._num_lora_adapters
+            layer.mlp.num_lora_adapters = self._num_lora_adapters
+            layer.self_attn.num_hidden_layers = self._num_hidden_layers
+            layer.mlp.num_hidden_layers = self._num_hidden_layers
 
     @property
     def lora_A_weights(self):
@@ -525,6 +531,24 @@ class LlamaModel(LlamaPreTrainedModel):
     @lora_scale.setter
     def lora_scale(self, value):
         self._lora_scale = value
+        self._propagate_lora_to_submodules()
+
+    @property
+    def num_lora_adapters(self):
+        return self._num_lora_adapters
+
+    @num_lora_adapters.setter
+    def num_lora_adapters(self, value):
+        self._num_lora_adapters = value
+        self._propagate_lora_to_submodules()
+
+    @property
+    def num_hidden_layers(self):
+        return self._num_hidden_layers
+
+    @num_hidden_layers.setter
+    def num_hidden_layers(self, value):
+        self._num_hidden_layers = value
         self._propagate_lora_to_submodules()
 
     @check_model_inputs

@@ -1,3 +1,4 @@
+import importlib
 import sys
 import os
 import time
@@ -219,11 +220,13 @@ def main() -> None:
         base_model_name,
         torch_dtype=torch_dtype,
         device_map=None,
-        attn_implementation="flash_attention_2",
+        attn_implementation="flash_attention_2" if importlib.util.find_spec("flash_attn") is not None else "sdpa",
     )
+    model.model.num_hidden_layers = base_model_config.num_hidden_layers
     model.model.lora_A_weights = lora_A_weights
     model.model.lora_B_weights = lora_B_weights
     model.model.lora_scale = adapter_config["lora_alpha"] / adapter_config["r"]
+    model.model.num_lora_adapters = len(LORA_MAPPING)
     
     model = model.to(device)
     model.eval()
