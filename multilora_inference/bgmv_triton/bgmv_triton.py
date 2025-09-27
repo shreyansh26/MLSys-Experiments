@@ -34,6 +34,7 @@ def bgmv_shrink_kernel(
     LAYER_IDX: tl.constexpr,
     B,                              # int (batch size)
     SEQ_LEN,                        # int (sequence length)
+    NUM_LORA_ADAPTERS: tl.constexpr, # int
     OUT_IS_FP16: tl.constexpr,
     OUT_IS_BF16: tl.constexpr,
     ADD_TO_Y: tl.constexpr,         # bool: if True -> Y += result ; else Y = result
@@ -49,6 +50,10 @@ def bgmv_shrink_kernel(
 
     # idx = indices[b] * num_layers + layer_idx
     idx_b = tl.load(indices_ptr + b_seq, mask=b_in, other=0)
+
+    if idx_b == NUM_LORA_ADAPTERS:
+        return
+    
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
     # Pointer bases (use 64-bit offsets)
@@ -119,6 +124,7 @@ def bgmv_expand_kernel(
     LAYER_IDX: tl.constexpr,
     B,                              # int (batch size)
     SEQ_LEN,                        # int (sequence length)
+    NUM_LORA_ADAPTERS: tl.constexpr, # int
     OUT_IS_FP16: tl.constexpr,
     OUT_IS_BF16: tl.constexpr,
     ADD_TO_Y: tl.constexpr,         # bool: if True -> Y += result ; else Y = result
@@ -136,6 +142,10 @@ def bgmv_expand_kernel(
 
     # idx = indices[b] * num_layers + layer_idx
     idx_b = tl.load(indices_ptr + b_seq)
+
+    if idx_b == NUM_LORA_ADAPTERS:
+        return
+
     idx = idx_b * NUM_LAYERS + LAYER_IDX
 
     # 64-bit constants
@@ -198,6 +208,7 @@ def bgmv_triton(
     seq_len: int,
     num_layers: int,
     layer_idx: int,
+    num_lora_adapters: int,
     scale: float = 1.0,
     accumulate: bool = False,   # if True: Y += result; else Y = result
 ):
@@ -271,6 +282,7 @@ def bgmv_triton(
                     F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
                     B_i,
                     SEQ_LEN_i,
+                    int(num_lora_adapters),
                     out_is_fp16, out_is_bf16,
                     False,
                 )
@@ -281,6 +293,7 @@ def bgmv_triton(
             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
             B_i,
             SEQ_LEN_i,
+            int(num_lora_adapters),
             out_is_fp16, out_is_bf16,
             bool(accumulate),
         )
@@ -300,6 +313,7 @@ def bgmv_triton(
                     F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
                     B_i,
                     SEQ_LEN_i,
+                    int(num_lora_adapters),
                     out_is_fp16, out_is_bf16,
                     False,
                 )
@@ -310,6 +324,7 @@ def bgmv_triton(
             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
             B_i,
             SEQ_LEN_i,
+            int(num_lora_adapters),
             out_is_fp16, out_is_bf16,
             bool(accumulate),
         )
