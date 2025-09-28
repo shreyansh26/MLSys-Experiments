@@ -8,7 +8,7 @@ def lora_bgmv_triton(y: torch.Tensor,
                      I: torch.Tensor,
                      num_layers: int = 1,
                      layer_idx: int = 0,
-                     num_lora_adapters: int = 0,
+                     num_lora_adapters: int = 1000,
                      scale: float = 1.0) -> torch.Tensor:
     assert y.is_cuda and x.is_cuda and A.is_cuda and B.is_cuda and I.is_cuda, "All tensors must be on CUDA"
     assert y.dim() == 3, "y must be [B, n, out_dim]"
@@ -31,7 +31,7 @@ def lora_bgmv_triton(y: torch.Tensor,
 
     y_intermediate = torch.zeros(Bsz * n, rank, dtype=x.dtype, device=x.device)
 
-    bgmv_triton(y_intermediate, x, A, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), num_lora_adapters=int(num_lora_adapters), scale=1.0, accumulate=False)    
+    bgmv_triton(y_intermediate, x, A, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), num_lora_adapters=int(num_lora_adapters), scale=1.0, accumulate=True)    # accumulate can be both True or False as Y_intermediate is zeroed
     bgmv_triton(y, y_intermediate, B, I, seq_len=int(seq_len), num_layers=int(num_layers), layer_idx=int(layer_idx), num_lora_adapters=int(num_lora_adapters), scale=float(scale), accumulate=True)
 
     return y
