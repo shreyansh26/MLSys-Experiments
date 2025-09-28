@@ -17,20 +17,41 @@ def _cdiv(a, b):
 # Each program computes a single output Y[b, j]
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_K': 64, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 2}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 2}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 1}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 2}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 1}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 2}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 64, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 64, 'SPLIT_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 64, 'SPLIT_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 64, 'SPLIT_K': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 8}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 16}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 32}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 64}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 8}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 16}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 32}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 64}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 128, 'SPLIT_K': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 8}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 16}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 32}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 512, 'SPLIT_K': 64}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 8}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 16}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 32}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_K': 256, 'SPLIT_K': 64}, num_warps=8, num_stages=3),
     ],
-    key=['F_IN'],
+    key=['F_OUT', 'F_IN'],
 )
 @triton.jit
 def bgmv_shrink_kernel(
@@ -104,24 +125,24 @@ def bgmv_shrink_kernel(
             out = acc
 
         # Cast to output dtype explicitly
-        if OUT_IS_FP16:
-            out = out.to(tl.float16)
-        elif OUT_IS_BF16:
-            out = out.to(tl.bfloat16)
-        else:
-            out = out.to(tl.float32)
+        # if OUT_IS_FP16:
+        #     out = out.to(tl.float16)
+        # elif OUT_IS_BF16:
+        #     out = out.to(tl.bfloat16)
+        # else:
+        #     out = out.to(tl.float32)
 
         tl.store(y_ptr, out, mask=b_in & j_in)
     else:
         # SPLIT-K path: ensure correct overwrite vs accumulate semantics
         if ADD_TO_Y:
             out = acc
-            if OUT_IS_FP16:
-                out = out.to(tl.float16)
-            elif OUT_IS_BF16:
-                out = out.to(tl.bfloat16)
-            else:
-                out = out.to(tl.float32)
+            # if OUT_IS_FP16:
+            #     out = out.to(tl.float16)
+            # elif OUT_IS_BF16:
+            #     out = out.to(tl.bfloat16)
+            # else:
+            #     out = out.to(tl.float32)
             tl.atomic_add(y_ptr, out, mask=b_in & j_in)
         else:
             # Overwrite semantics: one split subtracts previous Y, others add their partials
@@ -149,27 +170,13 @@ def bgmv_shrink_kernel(
 # Each program computes a tile of outputs Y[b, j0 : j0+BLOCK_M)
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 4,  'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 8, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 16, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 32, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_K': 32, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_K': 64,'SPLIT_K': 2}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_K': 32, 'SPLIT_K': 2}, num_warps=8, num_stages=2),
         triton.Config({'BLOCK_M': 64,  'BLOCK_K': 8,  'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 8,  'SPLIT_K': 2}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 64,  'BLOCK_K': 16, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 16, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 64,  'BLOCK_K': 32, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 32, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 64,  'BLOCK_K': 64, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_K': 64, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_K': 64, 'SPLIT_K': 2}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 128, 'BLOCK_K': 128,'SPLIT_K': 1}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_K': 128,'SPLIT_K': 2}, num_warps=8, num_stages=2),
         triton.Config({'BLOCK_M': 256, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_warps=8, num_stages=2),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_K': 64, 'SPLIT_K': 2}, num_warps=8, num_stages=2),
     ],
     key=['F_IN', 'F_OUT'],
 )
