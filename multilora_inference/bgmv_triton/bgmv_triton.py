@@ -23,6 +23,7 @@ def _cdiv(a, b):
         triton.Config({'BLOCK_K': 256}, num_warps=8, num_stages=3),
     ],
     key=['F_IN'],
+    reset_to_zero=['Y_ptr']
 )
 @triton.jit
 def bgmv_shrink_kernel(
@@ -113,6 +114,7 @@ def bgmv_shrink_kernel(
         triton.Config({'BLOCK_M': 256, 'BLOCK_K': 64},  num_warps=8, num_stages=2),
     ],
     key=['F_IN', 'F_OUT'],
+    restore_value=['Y_ptr']
 )
 @triton.jit
 def bgmv_expand_kernel(
@@ -271,22 +273,22 @@ def bgmv_triton(
         def grid(meta):
             return (_cdiv(F_OUT_i, meta['BLOCK_M']), B_i)
                 # Warmup only once per autotune key (device, F_IN, F_OUT)
-        if accumulate:
-            device_idx = Y.device.index if Y.is_cuda else -1
-            key = (device_idx, F_IN_i, F_OUT_i)
-            if key not in _TUNED_EXPAND_KEYS:
-                tmpY = torch.empty_like(Y)
-                bgmv_expand_kernel[grid](
-                    tmpY, X, W, indices,
-                    float(scale),
-                    F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
-                    B_i,
-                    SEQ_LEN_i,
-                    int(num_lora_adapters),
-                    out_is_fp16, out_is_bf16,
-                    False,
-                )
-                _TUNED_EXPAND_KEYS.add(key)
+        # if accumulate:
+        #     device_idx = Y.device.index if Y.is_cuda else -1
+        #     key = (device_idx, F_IN_i, F_OUT_i)
+        #     if key not in _TUNED_EXPAND_KEYS:
+        #         tmpY = torch.empty_like(Y)
+        #         bgmv_expand_kernel[grid](
+        #             tmpY, X, W, indices,
+        #             float(scale),
+        #             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+        #             B_i,
+        #             SEQ_LEN_i,
+        #             int(num_lora_adapters),
+        #             out_is_fp16, out_is_bf16,
+        #             False,
+        #         )
+        #         _TUNED_EXPAND_KEYS.add(key)
         bgmv_expand_kernel[grid](
             Y, X, W, indices,
             float(scale),
@@ -302,22 +304,22 @@ def bgmv_triton(
         def grid(meta):
             return (F_OUT_i, B_i)
                 # Warmup only once per autotune key (device, F_IN)
-        if accumulate:
-            device_idx = Y.device.index if Y.is_cuda else -1
-            key = (device_idx, F_IN_i)
-            if key not in _TUNED_SHRINK_KEYS:
-                tmpY = torch.empty_like(Y)
-                bgmv_shrink_kernel[grid](
-                    tmpY, X, W, indices,
-                    float(scale),
-                    F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
-                    B_i,
-                    SEQ_LEN_i,
-                    int(num_lora_adapters),
-                    out_is_fp16, out_is_bf16,
-                    False,
-                )
-                _TUNED_SHRINK_KEYS.add(key)
+        # if accumulate:
+        #     device_idx = Y.device.index if Y.is_cuda else -1
+        #     key = (device_idx, F_IN_i)
+        #     if key not in _TUNED_SHRINK_KEYS:
+        #         tmpY = torch.empty_like(Y)
+        #         bgmv_shrink_kernel[grid](
+        #             tmpY, X, W, indices,
+        #             float(scale),
+        #             F_IN_i, F_OUT_i, int(num_layers), int(layer_idx),
+        #             B_i,
+        #             SEQ_LEN_i,
+        #             int(num_lora_adapters),
+        #             out_is_fp16, out_is_bf16,
+        #             False,
+        #         )
+        #         _TUNED_SHRINK_KEYS.add(key)
         bgmv_shrink_kernel[grid](
             Y, X, W, indices,
             float(scale),
