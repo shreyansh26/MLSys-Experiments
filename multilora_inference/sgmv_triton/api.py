@@ -2,7 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
-from .sgmv_triton import sgmv_shrink_kernel, sgmv_expand_kernel
+from .sgmv_shrink_triton import sgmv_shrink
+from .sgmv_expand_triton import sgmv_expand
 
 def lora_sgmv_triton(
     Y: torch.Tensor,      # [B, F_out], dtype in {float32, float16, bfloat16}, contiguous
@@ -15,13 +16,29 @@ def lora_sgmv_triton(
     scale: float = 1.0,
     accumulate: bool = False,   # if True: Y += result; else Y = result
 ):
-    # Calculate the indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc
-    indices_sorted_by_lora_ids = indices.argsort()
-    num_tokens_per_lora = torch.bincount(indices_sorted_by_lora_ids)
-    lora_token_start_loc = torch.cumsum(num_tokens_per_lora, dim=0) - num_tokens_per_lora       # Exclusive prefix sum
+    batch_size = X.shape[0]
+    if indices.numel() == batch_size:
+        indices = indices.repeat_interleave(X.shape[1])
+    indices = indices.contiguous()
 
+    # Flatten inputs
+    X_shape = X.shape
+    Y_shape = Y.shape
+    X = X.reshape(-1, X_shape[-1])
+    Y = Y.reshape(-1, Y_shape[-1])
+
+    # Calculate the token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc
+    num_tokens_per_lora = torch.zeros(num_lora_adapters + 1, dtype=indices.dtype, device=indices.device)
+    lora_token_start_loc = torch.zeros(num_lora_adapters + 2, dtype=indices.dtype, device=indices.device)
+    active_lora_ids = torch.ones(num_lora_adapters + 1, dtype=indices.dtype, device=indices.device) * L
+
+    token_indices_sorted_by_lora_ids = indices.argsort(stable=True)
+    lora_ids, num_tokens_per_lora_curr = torch.unique(indices, sorted=True, return_counts=True)
+    active_lora_ids[:lora_ids.shape[0]] = lora_ids
+    num_tokens_per_lora[:num_tokens_per_lora_curr.shape[0]] = num_tokens_per_lora_curr
+    lora_token_start_loc[1: 1+num_tokens_per_lora_curr.shape[0]] = torch.cumsum(num_tokens_per_lora_curr, dim=0)
 
     Y_intermediate = torch.zeros(X.shape[0], A.shape[1], dtype=Y.dtype, device=Y.device)
 
-    sgmv_shrink_kernel(Y_intermediate, X, A, indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, scale)
-    sgmv_expand_kernel(Y, Y_intermediate, B, indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, 1.0, accumulate)
+    sgmv_shrink(Y_intermediate, X, A, indices, token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, active_lora_ids, num_lora_adapters, scale)
+    sgmv_expand(Y, Y_intermediate, B, indices, token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, active_lora_ids, num_lora_adapters, 1.0, accumulate)
