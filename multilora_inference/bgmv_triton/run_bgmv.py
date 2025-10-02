@@ -9,7 +9,6 @@ F_in = 16
 F_out = 16384
 scale = 0.25
 n = 32
-num_lora_adapters = 100
 
 dtype = torch.float16  # or torch.bfloat16, torch.float32
 device = 'cuda'
@@ -21,7 +20,7 @@ W = torch.randn(L * num_layers, F_out, F_in, device=device, dtype=dtype)
 Y = torch.randn(B, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 
-bgmv_triton(Y, X, W, indices, seq_len=1, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale)
+bgmv_triton(Y, X, W, indices, seq_len=1, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale)
 
 # Correctness check vs. PyTorch
 idx = indices.to(torch.long) * num_layers + layer_idx
@@ -42,7 +41,7 @@ Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 
 Y_orig = Y.clone()
-bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale, accumulate=False)
+bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale, accumulate=False)
 
 # Correctness check vs. PyTorch
 idx = indices.to(torch.long) * num_layers + layer_idx
@@ -63,7 +62,7 @@ Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 
 Y_orig = Y.clone()
-bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale, accumulate=True)
+bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale, accumulate=True)
 
 # Correctness check vs. PyTorch (accumulate semantics: Y_out = Y_orig + ref)
 idx = indices.to(torch.long) * num_layers + layer_idx
@@ -88,10 +87,10 @@ Y = torch.randn(B, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 mask_nolora = torch.zeros(B, dtype=torch.bool, device=device)
 mask_nolora[: max(1, B // 4)] = True  # mark a chunk as no-lora
-indices[mask_nolora] = num_lora_adapters
+indices[mask_nolora] = L
 
 Y_orig = Y.clone()
-bgmv_triton(Y, X, W, indices, seq_len=1, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale)
+bgmv_triton(Y, X, W, indices, seq_len=1, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale)
 
 idx = indices.to(torch.long) * num_layers + layer_idx
 idx_safe = idx.clone()
@@ -113,10 +112,10 @@ Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 mask_nolora = torch.zeros(B, dtype=torch.bool, device=device)
 mask_nolora[:: max(1, B // 5)] = True
-indices[mask_nolora] = num_lora_adapters
+indices[mask_nolora] = L
 
 Y_orig = Y.clone()
-bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale, accumulate=False)
+bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale, accumulate=False)
 
 idx = indices.to(torch.long) * num_layers + layer_idx
 idx_safe = idx.clone()
@@ -138,10 +137,10 @@ Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
 indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
 mask_nolora = torch.zeros(B, dtype=torch.bool, device=device)
 mask_nolora[1:: max(1, B // 6)] = True
-indices[mask_nolora] = num_lora_adapters
+indices[mask_nolora] = L
 
 Y_orig = Y.clone()
-bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=num_lora_adapters, scale=scale, accumulate=True)
+bgmv_triton(Y, X, W, indices, seq_len=n, num_layers=num_layers, layer_idx=layer_idx, num_lora_adapters=L, scale=scale, accumulate=True)
 
 idx = indices.to(torch.long) * num_layers + layer_idx
 idx_safe = idx.clone()
