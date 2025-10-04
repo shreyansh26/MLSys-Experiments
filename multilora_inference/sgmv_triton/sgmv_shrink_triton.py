@@ -46,6 +46,7 @@ def _get_lora_a_ptr(W_ptr: torch.Tensor) -> tuple[torch.Tensor, int, int, int]:
     _LORA_A_PTR_CACHE[key] = result
     return result
 
+
 @triton.autotune(
     configs=[
         triton.Config({'BLOCK_M': 32, 'BLOCK_N': 16, 'BLOCK_K': 256, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
@@ -89,7 +90,7 @@ def sgmv_shrink_kernel(
 
     pid_sk = pid_sk_m_n % SPLIT_K
     pid_m = (pid_sk_m_n // SPLIT_K) % blocks_m
-    pid_n = pid_sk_m_n // (SPLIT_K * blocks_m) % blocks_n
+    pid_n = (pid_sk_m_n // (SPLIT_K * blocks_m)) % blocks_n
 
     lora_id = tl.load(lora_ids + pid_lora_idx)
     
@@ -149,6 +150,7 @@ def sgmv_shrink_kernel(
         tl.store(y_ptr, acc, mask=y_mask)
     else:
         tl.atomic_add(y_ptr, acc, mask=y_mask)
+
 
 def sgmv_shrink(
     Y_ptr, X_ptr, W_ptr, 
