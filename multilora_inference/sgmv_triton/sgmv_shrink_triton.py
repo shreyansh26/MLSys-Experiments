@@ -1,11 +1,106 @@
 import torch
 import triton
 import triton.language as tl
-from triton.language.core import validate_block_shape
-
-
 # Local cache for LoRA-A pointer/stride info when using a single tensor.
 _LORA_A_PTR_CACHE: dict[int, tuple[torch.Tensor, int, int, int]] = {}
+
+
+def _select_split_k(args):
+    block_m = args["BLOCK_M"]
+    block_n = args["BLOCK_N"]
+    block_k = args["BLOCK_K"]
+    m = args["M"]
+    n = args["N"]
+    k = args["K"]
+
+    tiles = ((m + block_m - 1) // block_m) * ((n + block_n - 1) // block_n)
+
+    if tiles >= 128:
+        desired = 1
+    elif tiles >= 32:
+        desired = 2
+    else:
+        desired = 4
+
+    max_split = max(1, k // block_k)
+    return min(desired, max_split)
+
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_N': 16, 'BLOCK_K': 128}, num_warps=2, num_stages=2),
+        triton.Config({'BLOCK_N': 32, 'BLOCK_K': 128}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_N': 16, 'BLOCK_K': 256}, num_warps=4, num_stages=2),
+    ],
+    key=['K', 'N']
+)
+@triton.jit
+def sgmv_shrink_decode_kernel(
+    Y_ptr, X_ptr, lora_ptr_tensor,
+    M, N, K,
+    indices,
+    scale,
+    NUM_LORA_ADAPTERS,
+    X_ptr_stride_d0, X_ptr_stride_d1,
+    lora_stride_d0, lora_stride_d1, lora_stride_d2,
+    Y_ptr_stride_d0, Y_ptr_stride_d1,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_token = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    token_id = pid_token
+    if token_id >= M:
+        return
+
+    lora_id = tl.load(indices + token_id)
+    if lora_id == NUM_LORA_ADAPTERS:
+        return
+
+    offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    n_mask = offset_n < N
+
+    k_offsets = tl.arange(0, BLOCK_K)
+
+    x_base_ptr = X_ptr + token_id * X_ptr_stride_d0
+    y_base_ptr = Y_ptr + token_id * Y_ptr_stride_d0
+    lora_base_ptr = lora_ptr_tensor + lora_stride_d0 * lora_id
+
+    acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+
+    for k_start in range(0, K, BLOCK_K):
+        k_indices = k_start + k_offsets
+        k_mask = k_indices < K
+
+        x_vals = tl.load(
+            x_base_ptr + k_indices * X_ptr_stride_d1,
+            mask=k_mask,
+            other=0.0,
+        ).to(tl.float32)
+
+        lora_ptr = (
+            lora_base_ptr
+            + offset_n[None, :] * lora_stride_d1
+            + k_indices[:, None] * lora_stride_d2
+        )
+
+        lora_vals = tl.load(
+            lora_ptr,
+            mask=k_mask[:, None] & n_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc += tl.sum(lora_vals * x_vals[:, None], axis=0)
+
+    acc = acc * tl.full((), scale, dtype=tl.float32)
+
+    acc_out = acc.to(Y_ptr.dtype.element_ty)
+    tl.store(
+        y_base_ptr + offset_n * Y_ptr_stride_d1,
+        acc_out,
+        mask=n_mask,
+    )
 
 
 def _get_lora_a_ptr(W_ptr: torch.Tensor) -> tuple[torch.Tensor, int, int, int]:
@@ -59,7 +154,7 @@ def _get_lora_a_ptr(W_ptr: torch.Tensor) -> tuple[torch.Tensor, int, int, int]:
     reset_to_zero=['Y_ptr']
 )
 @triton.heuristics({
-    "SPLIT_K": lambda args: 64 if args["M"] < 128 else 8,
+    "SPLIT_K": _select_split_k,
     "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
 })
 @triton.jit
@@ -110,9 +205,9 @@ def sgmv_shrink_kernel(
     block_lora_seq_indices = token_indices_sorted_by_lora_ids + lora_m_indices_start + block_m_offset
     
     # load token indices for that lora idx
-    offset_m = tl.arange(0, BLOCK_M) % num_rows_to_process
-    # Repeated values, yes but are masked out in output y_mask
-    row_address_map = tl.load(block_lora_seq_indices + offset_m)
+    offset_m = tl.arange(0, BLOCK_M)
+    row_mask = offset_m < num_rows_to_process
+    row_address_map = tl.load(block_lora_seq_indices + offset_m, mask=row_mask, other=0)
 
     offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offset_n = tl.max_contiguous(tl.multiple_of(offset_n % N, BLOCK_N), BLOCK_N)
@@ -126,11 +221,13 @@ def sgmv_shrink_kernel(
 
     for k in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
-            tiled_x = tl.load(x_ptr)
+            tiled_x = tl.load(x_ptr, mask=row_mask[:, None], other=0)
             tiled_lora = tl.load(lora_ptr)
         else:
-            tiled_x = tl.load(x_ptr, mask=offset_k[None, :] < K - k * (BLOCK_K * SPLIT_K), other=0)
-            tiled_lora = tl.load(lora_ptr, mask=offset_k[:, None] < K - k * (BLOCK_K * SPLIT_K), other=0)
+            remaining_k = K - k * (BLOCK_K * SPLIT_K)
+            k_mask = offset_k[None, :] < remaining_k
+            tiled_x = tl.load(x_ptr, mask=row_mask[:, None] & k_mask, other=0)
+            tiled_lora = tl.load(lora_ptr, mask=offset_k[:, None] < remaining_k, other=0)
         
         if X_ptr.dtype.element_ty != lora_ptr_tensor.dtype.element_ty:
             tiled_x = tiled_x.to(lora_ptr_tensor.dtype.element_ty)
@@ -164,6 +261,7 @@ def sgmv_shrink(
     lora_ids,
     num_lora_adapters,
     scale,
+    decode_mode: bool = False,
 ):
     assert X_ptr.is_cuda and W_ptr.is_cuda and token_indices_sorted_by_lora_ids.is_cuda and num_tokens_per_lora.is_cuda and lora_token_start_loc.is_cuda
     assert X_ptr.is_contiguous() and W_ptr.is_contiguous() and Y_ptr.is_contiguous()
@@ -186,6 +284,24 @@ def sgmv_shrink(
     M = T
     N = W_F_out
     K = W_F_in
+
+    if decode_mode:
+        grid_decode = lambda meta: (
+            M,
+            triton.cdiv(N, meta['BLOCK_N']),
+        )
+
+        sgmv_shrink_decode_kernel[grid_decode](
+            Y_ptr, X_ptr, lora_ptr_tensor,
+            M, N, K,
+            indices,
+            scale,
+            num_lora_adapters,
+            X_ptr.stride(0), X_ptr.stride(1),
+            lora_stride_d0, lora_stride_d1, lora_stride_d2,
+            Y_ptr.stride(0), Y_ptr.stride(1),
+        )
+        return
 
     grid = lambda meta: (
         meta['SPLIT_K'] * triton.cdiv(M, meta['BLOCK_M']) * triton.cdiv(N, meta['BLOCK_N']),
