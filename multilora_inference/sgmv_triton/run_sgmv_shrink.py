@@ -49,8 +49,8 @@ torch.testing.assert_close(ref, Y, atol=1e-1, rtol=1e-1)
 print("Max abs diff:", max_abs_diff)
 print("2D case passed")
 
-## 3D case with accumulate=False
-print("3D case with accumulate=False")
+## 3D case with
+print("3D case")
 X = torch.randn(B, n, F_in, device=device, dtype=dtype)
 W = torch.randn(L * num_layers, F_out, F_in, device=device, dtype=dtype)
 Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
@@ -70,33 +70,7 @@ ref = torch.einsum("bfi,bni->bnf", W_sel, X) * scale
 max_abs_diff = (ref - Y).abs().max().item()
 torch.testing.assert_close(ref, Y, atol=1e-1, rtol=1e-1)
 print("Max abs diff:", max_abs_diff)
-print("3D case with accumulate=False passed")
-
-## 3D case with accumulate=True
-print("3D case with accumulate=True")
-X = torch.randn(B, n, F_in, device=device, dtype=dtype)
-W = torch.randn(L * num_layers, F_out, F_in, device=device, dtype=dtype)
-Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
-indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
-
-Y_orig = Y.clone()
-X_flat = X.reshape(-1, F_in)
-Y_flat = Y.reshape(-1, F_out)
-indices_expanded = indices.repeat_interleave(n)
-
-# For accumulate, don't zero Y
-Y_flat_copy = Y_flat.clone()
-prepare_metadata_and_call(Y_flat_copy, X_flat, W, indices_expanded, num_layers, layer_idx, L, scale)
-Y_flat += Y_flat_copy  # Manual accumulate
-
-# Correctness check vs. PyTorch (accumulate semantics: Y_out = Y_orig + ref)
-idx = indices.to(torch.long) * num_layers + layer_idx
-W_sel = W[idx, :, :]
-ref = torch.einsum("bfi,bni->bnf", W_sel, X) * scale
-max_abs_diff = (Y_orig + ref - Y).abs().max().item()
-torch.testing.assert_close(Y_orig + ref, Y, atol=1e-1, rtol=1e-1)
-print("Max abs diff:", max_abs_diff)
-print("3D case with accumulate=True passed")
+print("3D case with passed")
 
 # --------------------------------
 # No LoRA adapter cases: selected batches should be unchanged
@@ -127,8 +101,8 @@ if (~mask_nolora).any():
     torch.testing.assert_close(Y[~mask_nolora], ref[~mask_nolora], atol=1e-1, rtol=1e-1)
 print("No LoRA 2D passed")
 
-# 3D case accumulate=False
-print("No LoRA 3D accumulate=False")
+# 3D case
+print("No LoRA 3D")
 X = torch.randn(B, n, F_in, device=device, dtype=dtype)
 W = torch.randn(L * num_layers, F_out, F_in, device=device, dtype=dtype)
 Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
@@ -154,35 +128,4 @@ if mask_nolora.any():
     torch.testing.assert_close(Y[mask_nolora], torch.zeros_like(Y[mask_nolora]), atol=1e-1, rtol=1e-1)
 if (~mask_nolora).any():
     torch.testing.assert_close(Y[~mask_nolora], ref[~mask_nolora], atol=1e-1, rtol=1e-1)
-print("No LoRA 3D accumulate=False passed")
-
-# 3D case accumulate=True
-print("No LoRA 3D accumulate=True")
-X = torch.randn(B, n, F_in, device=device, dtype=dtype)
-W = torch.randn(L * num_layers, F_out, F_in, device=device, dtype=dtype)
-Y = torch.randn(B, n, F_out, device=device, dtype=dtype)
-indices = torch.randint(low=0, high=L, size=(B,), device=device, dtype=torch.int32)
-mask_nolora = torch.zeros(B, dtype=torch.bool, device=device)
-mask_nolora[1:: max(1, B // 6)] = True
-indices[mask_nolora] = L
-
-Y_orig = Y.clone()
-X_flat = X.reshape(-1, F_in)
-Y_flat = Y.reshape(-1, F_out)
-indices_expanded = indices.repeat_interleave(n)
-
-Y_flat_copy = Y_flat.clone()
-prepare_metadata_and_call(Y_flat_copy, X_flat, W, indices_expanded, num_layers, layer_idx, L, scale)
-Y_flat += Y_flat_copy  # Manual accumulate
-
-idx = indices.to(torch.long) * num_layers + layer_idx
-idx_safe = idx.clone()
-idx_safe[mask_nolora] = 0
-W_sel = W[idx_safe, :, :]
-ref = torch.einsum("bfi,bni->bnf", W_sel, X) * scale
-
-if mask_nolora.any():
-    torch.testing.assert_close(Y[mask_nolora], Y_orig[mask_nolora], atol=1e-1, rtol=1e-1)
-if (~mask_nolora).any():
-    torch.testing.assert_close(Y[~mask_nolora], (Y_orig + ref)[~mask_nolora], atol=1e-1, rtol=1e-1)
-print("No LoRA 3D accumulate=True passed")
+print("No LoRA 3D passed")
