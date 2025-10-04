@@ -49,19 +49,19 @@ def _get_lora_a_ptr(W_ptr: torch.Tensor) -> tuple[torch.Tensor, int, int, int]:
 
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 16, 'BLOCK_K': 256, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 16, 'BLOCK_K': 128, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 16, 'BLOCK_K': 64, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 16, 'BLOCK_N': 16, 'BLOCK_K': 512, 'SPLIT_K': 8}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 16, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 16, 'BLOCK_K': 256}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 16, 'BLOCK_K': 128}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 16, 'BLOCK_K': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 16, 'BLOCK_N': 16, 'BLOCK_K': 512}, num_warps=4, num_stages=2),
     ],
     key=['K', 'N'],
     reset_to_zero=['Y_ptr']
 )
-@triton.heuristics(
-    {
-        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
-    }
-)
+@triton.heuristics({
+    "SPLIT_K": lambda args: 64 if args["M"] < 128 else 8,
+    "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
+})
 @triton.jit
 def sgmv_shrink_kernel(
     Y_ptr, X_ptr, lora_ptr_tensor,
