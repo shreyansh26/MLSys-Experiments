@@ -41,8 +41,8 @@ def bgmv_shrink_kernel(
     ADD_TO_Y: tl.constexpr,         # bool: if True -> Y += result ; else Y = result
     BLOCK_K: tl.constexpr,
 ):
-    pid_j = tl.program_id(axis=0)  # output row j
-    pid_b = tl.program_id(axis=1)  # batch b
+    pid_b = tl.program_id(axis=0)  # batch b (map large dim to grid.x)
+    pid_j = tl.program_id(axis=1)  # output row j (grid.y)
 
     b_seq  = pid_b // SEQ_LEN 
 
@@ -133,8 +133,8 @@ def bgmv_expand_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(axis=0)  # tile id along output rows
-    pid_b = tl.program_id(axis=1)  # batch id
+    pid_b = tl.program_id(axis=0)  # batch id (grid.x)
+    pid_m = tl.program_id(axis=1)  # tile id along output rows (grid.y)
 
     b_seq  = pid_b // SEQ_LEN 
 
@@ -271,7 +271,8 @@ def bgmv_triton(
     if F_in < F_out:
         # EXPAND
         def grid(meta):
-            return (_cdiv(F_OUT_i, meta['BLOCK_M']), B_i)
+            # map large flattened batch (B_i) to grid.x to avoid CUDA grid.y limits
+            return (B_i, _cdiv(F_OUT_i, meta['BLOCK_M']))
                 # Warmup only once per autotune key (device, F_IN, F_OUT)
         # if accumulate:
         #     device_idx = Y.device.index if Y.is_cuda else -1
@@ -302,7 +303,8 @@ def bgmv_triton(
     else:
         # SHRINK
         def grid(meta):
-            return (F_OUT_i, B_i)
+            # map large flattened batch (B_i) to grid.x to avoid CUDA grid.y limits
+            return (B_i, F_OUT_i)
                 # Warmup only once per autotune key (device, F_IN)
         # if accumulate:
         #     device_idx = Y.device.index if Y.is_cuda else -1
