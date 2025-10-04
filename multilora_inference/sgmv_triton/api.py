@@ -21,9 +21,12 @@ def lora_sgmv_triton(
         indices = indices.repeat_interleave(X.shape[1])
     indices = indices.contiguous()
 
-    # Flatten inputs (LoRA weights already contiguous from loading)
     X_shape = X.shape
     Y_shape = Y.shape
+    has_sequence_dim = X.dim() == 3
+    decode_mode = has_sequence_dim and X_shape[-2] == 1
+
+    # Flatten inputs (LoRA weights already contiguous from loading)
     X = X.view(-1, X_shape[-1])
     Y = Y.view(-1, Y_shape[-1])
 
@@ -40,5 +43,29 @@ def lora_sgmv_triton(
 
     Y_intermediate = torch.zeros(X.shape[0], A.shape[1], dtype=Y.dtype, device=Y.device)
 
-    sgmv_shrink(Y_intermediate, X, A, indices, token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, active_lora_ids, num_lora_adapters, scale)
-    sgmv_expand(Y, Y_intermediate, B, indices, token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc, active_lora_ids, num_lora_adapters, accumulate)
+    sgmv_shrink(
+        Y_intermediate,
+        X,
+        A,
+        indices,
+        token_indices_sorted_by_lora_ids,
+        num_tokens_per_lora,
+        lora_token_start_loc,
+        active_lora_ids,
+        num_lora_adapters,
+        scale,
+        decode_mode=decode_mode,
+    )
+    sgmv_expand(
+        Y,
+        Y_intermediate,
+        B,
+        indices,
+        token_indices_sorted_by_lora_ids,
+        num_tokens_per_lora,
+        lora_token_start_loc,
+        active_lora_ids,
+        num_lora_adapters,
+        accumulate,
+        decode_mode=decode_mode,
+    )
