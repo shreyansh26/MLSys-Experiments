@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         "--lora-inference-mode",
         type=str,
         default="gbmm",
-        choices=["bgmv_cuda", "bgmv_triton", "gbmm"],
+        choices=["bgmv_cuda", "bgmv_triton", "sgmv_triton", "gbmm"],
         help="Multi-LoRA inference mode",
     )
     parser.add_argument(
@@ -325,5 +325,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --lora-inference-mode bgmv_cuda
+    # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --lora-inference-mode sgmv_triton
     # CUDA_VISIBLE_DEVICES=0 python run_inference_multilora.py --lora-inference-mode bgmv_triton
     main()
