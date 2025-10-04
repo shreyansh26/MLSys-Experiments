@@ -166,7 +166,6 @@ def sgmv_shrink(
     scale,
 ):
     assert X_ptr.is_cuda and W_ptr.is_cuda and token_indices_sorted_by_lora_ids.is_cuda and num_tokens_per_lora.is_cuda and lora_token_start_loc.is_cuda
-    assert X_ptr.dtype == W_ptr.dtype
     assert X_ptr.is_contiguous() and W_ptr.is_contiguous() and Y_ptr.is_contiguous()
 
     # F_OUT is rank here

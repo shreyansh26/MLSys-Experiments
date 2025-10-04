@@ -21,11 +21,11 @@ def lora_sgmv_triton(
         indices = indices.repeat_interleave(X.shape[1])
     indices = indices.contiguous()
 
-    # Flatten inputs
+    # Flatten inputs (LoRA weights already contiguous from loading)
     X_shape = X.shape
     Y_shape = Y.shape
-    X = X.reshape(-1, X_shape[-1])
-    Y = Y.reshape(-1, Y_shape[-1])
+    X = X.view(-1, X_shape[-1])
+    Y = Y.view(-1, Y_shape[-1])
 
     # Calculate the token_indices_sorted_by_lora_ids, num_tokens_per_lora, lora_token_start_loc
     num_tokens_per_lora = torch.zeros(num_lora_adapters + 1, dtype=indices.dtype, device=indices.device)
