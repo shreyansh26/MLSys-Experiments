@@ -19,7 +19,7 @@ from modeling_llama_multilora import LlamaForCausalLM
 DEFAULT_OUTPUT_ROOT = "/mnt/ssd2/shreyansh/models/multilora"
 DEFAULT_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
-DEFAULT_BATCH_SIZE = 4
+DEFAULT_BATCH_SIZE = 64
 
 LORA_MAPPING = {
     "ifeval_like_data": 0,
@@ -203,18 +203,46 @@ def get_instructions_outputs_from_datasets(dataset_names: list[str], batch_size:
     return instructions, outputs, dataset_indices
 
 
-def main() -> None:
-    args = parse_args()
+def prepare_batch_data(dataset_names: list[str], batch_size: int, add_no_lora_sample: bool = True) -> tuple[list[str], list[str], list[int]]:
+    """
+    Prepare a batch of instructions and lora indices for inference.
+    
+    Args:
+        dataset_names: List of dataset names to sample from
+        batch_size: Number of samples in the batch
+        add_no_lora_sample: If True, randomly replace one sample's lora index with len(LORA_MAPPING) (no LoRA)
+    
+    Returns:
+        instructions: List of instruction strings
+        reference_outputs: List of reference output strings
+        lora_indices: List of LoRA adapter indices
+    """
+    instructions, reference_outputs, dataset_indices = get_instructions_outputs_from_datasets(
+        dataset_names, batch_size
+    )
+    lora_indices = dataset_indices.copy()
+    
+    # Optionally mark a random index as len(LORA_MAPPING) -> No LoRA case
+    if add_no_lora_sample:
+        random_idx = random.randint(0, batch_size - 1)
+        lora_indices[random_idx] = len(LORA_MAPPING)
+    
+    return instructions, reference_outputs, lora_indices
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch_dtype = torch.bfloat16 if args.bf16 else torch.float16
 
-    ckpt_dirs = get_lora_checkpoint_dir()
+def load_multilora_model(ckpt_dirs: list[Path], torch_dtype: torch.dtype, device: torch.device, lora_inference_mode: str) -> tuple[Any, dict]:
+    """
+    Load base model and inject multi-LoRA weights.
+    
+    Returns:
+        model: The loaded model with LoRA weights
+        metadata: Dict containing base_model_config, base_model_name, adapter_config
+    """
     if not all(ckpt_dir.exists() for ckpt_dir in ckpt_dirs):
         raise FileNotFoundError(f"Checkpoint directory does not exist: {ckpt_dirs}")
 
     base_model_config, base_model_name, adapter_config = get_base_model_config(ckpt_dirs[0])
-    lora_A_weights, lora_B_weights = get_multilora_A_B_weights(ckpt_dirs, base_model_config, mode=args.lora_inference_mode)
+    lora_A_weights, lora_B_weights = get_multilora_A_B_weights(ckpt_dirs, base_model_config, mode=lora_inference_mode)
 
     model = LlamaForCausalLM.from_pretrained(
         base_model_name,
@@ -230,48 +258,51 @@ def main() -> None:
     
     model = model.to(device)
     model.eval()
-
-    tokenizer = load_tokenizer(ckpt_dirs[0], args.model_name)
-
-    dataset_names = list(LORA_MAPPING.keys())
-    if dataset_names is not None and len(dataset_names) > 0:
-        # Only this flow taken for now
-        instructions, reference_outputs, dataset_indices = get_instructions_outputs_from_datasets(
-            dataset_names, DEFAULT_BATCH_SIZE
-        )
-        lora_indices = dataset_indices
-        print(lora_indices)
-    else:
-        instructions, reference_outputs, sample_indices = get_instructions_outputs_from_dataset(
-            args.dataset_name, args.sample_index, DEFAULT_BATCH_SIZE
-        )
-        lora_indices = [LORA_MAPPING[args.dataset_name]] * DEFAULT_BATCH_SIZE
-        print(lora_indices)
     
-
-    # Mark a random index as len(LORA_MAPPING) -> No LoRA case
-    random_idx = random.randint(0, DEFAULT_BATCH_SIZE - 1)
-    lora_indices[random_idx] = len(LORA_MAPPING)
-
-    lora_indices = torch.tensor(lora_indices, device=device)
-    print("Number of LoRA adapters: ", len(LORA_MAPPING))
-    print("Batch LoRA indices: ", lora_indices)
+    metadata = {
+        "base_model_config": base_model_config,
+        "base_model_name": base_model_name,
+        "adapter_config": adapter_config,
+    }
     
+    return model, metadata
+
+
+def run_inference(
+    model: Any,
+    tokenizer: Any,
+    instructions: list[str],
+    lora_indices: torch.Tensor,
+    lora_inference_mode: str,
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float,
+    device: torch.device,
+    warmup: bool = True,
+) -> tuple[list[str], float, int]:
+    """
+    Run inference with the multi-LoRA model.
+    
+    Returns:
+        generated_texts: List of generated text strings
+        tokens_per_second: Generation throughput
+        total_generated_tokens: Total number of tokens generated
+    """
     inputs = build_chat_inputs(tokenizer, instructions, device)
-    print("-" * 100)
-
+    
     # Warmup: run a minimal generation to compile kernels before timing
-    with torch.no_grad():
-        model.generate(
-            **inputs,
-            max_new_tokens=5,
-            do_sample=False,
-            temperature=1.0,
-            top_p=1.0,
-            pad_token_id=tokenizer.eos_token_id,
-            lora_indices=lora_indices,
-            lora_inference_mode=args.lora_inference_mode
-        )
+    if warmup:
+        with torch.no_grad():
+            model.generate(
+                **inputs,
+                max_new_tokens=5,
+                do_sample=False,
+                temperature=1.0,
+                top_p=1.0,
+                pad_token_id=tokenizer.eos_token_id,
+                lora_indices=lora_indices,
+                lora_inference_mode=lora_inference_mode
+            )
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -280,13 +311,13 @@ def main() -> None:
     with torch.no_grad():
         generated_ids = model.generate(
             **inputs,
-            max_new_tokens=args.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             do_sample=True,
-            temperature=args.temperature,
-            top_p=args.top_p,
+            temperature=temperature,
+            top_p=top_p,
             pad_token_id=tokenizer.eos_token_id,
             lora_indices=lora_indices,
-            lora_inference_mode=args.lora_inference_mode
+            lora_inference_mode=lora_inference_mode
         )
 
     if torch.cuda.is_available():
@@ -304,9 +335,49 @@ def main() -> None:
     generated_texts = tokenizer.batch_decode(
         [tensor.tolist() for tensor in generated_token_tensors], skip_special_tokens=True
     )
+    
+    return generated_texts, tokens_per_second, total_generated_tokens
 
+
+def main() -> None:
+    args = parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch_dtype = torch.bfloat16 if args.bf16 else torch.float16
+
+    # Load model
+    ckpt_dirs = get_lora_checkpoint_dir()
+    model, metadata = load_multilora_model(ckpt_dirs, torch_dtype, device, args.lora_inference_mode)
+    tokenizer = load_tokenizer(ckpt_dirs[0], args.model_name)
+
+    # Prepare batch data
+    dataset_names = list(LORA_MAPPING.keys())
+    instructions, reference_outputs, lora_indices = prepare_batch_data(
+        dataset_names, DEFAULT_BATCH_SIZE, add_no_lora_sample=True
+    )
+    
+    lora_indices_tensor = torch.tensor(lora_indices, device=device)
+    print("Number of LoRA adapters: ", len(LORA_MAPPING))
+    print("Batch LoRA indices: ", lora_indices_tensor)
+    print("-" * 100)
+
+    # Run inference
+    generated_texts, tokens_per_second, total_generated_tokens = run_inference(
+        model=model,
+        tokenizer=tokenizer,
+        instructions=instructions,
+        lora_indices=lora_indices_tensor,
+        lora_inference_mode=args.lora_inference_mode,
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        device=device,
+        warmup=True,
+    )
+
+    # Print results
     for batch_idx, (dataset_idx, instruction, reference, prediction) in enumerate(
-        zip(lora_indices, instructions, reference_outputs, generated_texts)
+        zip(lora_indices_tensor, instructions, reference_outputs, generated_texts)
     ):
         print(f"Sample {batch_idx} (lora/dataset index {dataset_idx}):")
         print("Instruction:")
@@ -317,6 +388,7 @@ def main() -> None:
         print(prediction)
         print("-" * 100)
 
+    generation_seconds = total_generated_tokens / tokens_per_second if tokens_per_second else 0.0
     print(
         f"Decoding throughput: {tokens_per_second:.2f} tokens/sec "
         f"({total_generated_tokens} tokens in {generation_seconds:.2f} seconds)."
