@@ -118,9 +118,9 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
     for checkpoint in checkpoint_path:
         lora_adapter_path = os.path.join(checkpoint, "adapter_model.safetensors")
         tensors = {}
-        with safe_open(lora_adapter_path, framework="pt", device=0) as f:
+        with safe_open(lora_adapter_path, framework="pt", device="cpu") as f:
             for k in f.keys():
-                tensors[k] = f.get_tensor(k)
+                tensors[k] = f.get_tensor(k).cuda()
 
         A_weights_t = {}
         B_weights_t = {}
@@ -143,7 +143,7 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
             A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
             B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
 
-    if mode == "gbmm":
+    if mode == "gbmm" or mode == "sgmv_triton":
         # No LoRA case
         for module in modules_with_lora:
             A_weights_t[module] = []
@@ -163,10 +163,10 @@ def get_multilora_A_B_weights(checkpoint_path: List[str], base_model_config: Aut
             A_weights[module].append(torch.stack(A_weights_t[module], dim=0))
             B_weights[module].append(torch.stack(B_weights_t[module], dim=0))
 
-    if mode == "gbmm":
+    if mode == "gbmm" or mode == "sgmv_triton":
         for module in modules_with_lora:
-            A_weights[module] = torch.stack(A_weights[module], dim=0).transpose(0, 1)
-            B_weights[module] = torch.stack(B_weights[module], dim=0).transpose(0, 1)
+            A_weights[module] = torch.stack(A_weights[module], dim=0).transpose(0, 1).contiguous()
+            B_weights[module] = torch.stack(B_weights[module], dim=0).transpose(0, 1).contiguous()
 
     elif mode.startswith("bgmv"):
         for module in modules_with_lora:

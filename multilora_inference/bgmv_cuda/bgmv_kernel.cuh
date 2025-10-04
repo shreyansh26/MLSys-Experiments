@@ -64,8 +64,8 @@ __global__ void bgmv_shrink_kernel(T* Y,
                                    const T scale) {
     auto block = cg::this_thread_block();
 
-    const int b = blockIdx.y;
-    const int j = blockIdx.x;
+    const int b = blockIdx.x;
+    const int j = blockIdx.y;
 
     const int b_seq = b / seqlen;
 
@@ -221,8 +221,8 @@ __global__ void bgmv_expand_kernel(T* Y,
                                    const int num_lora_adapters,
                                    const T scale) {
     auto block = cg::this_thread_block();
-    const int b = blockIdx.y;
-    const int tile_idx = blockIdx.x;
+    const int b = blockIdx.x;
+    const int tile_idx = blockIdx.y;
 
     const int b_seq = b / seqlen;
 
@@ -286,14 +286,14 @@ void bgmv_kernel(T* Y,
         int tx = F_in / vec_size;
         int ty = 32 / tx;
         int tz = 4;
-        dim3 grid(F_out / (tz * ty), batch_size);
+        dim3 grid(batch_size, F_out / (tz * ty));
         dim3 block(tx, ty, tz);
         bgmv_expand_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, num_lora_adapters, scale);
     }
     else {
         constexpr int vec_size = 16 / sizeof(T);
         assert(F_in % (vec_size * 32) == 0);
-        dim3 grid(F_out, batch_size);
+        dim3 grid(batch_size, F_out);
         dim3 block(32, 4);
         bgmv_shrink_kernel<F_in, F_out, T><<<grid, block>>>(Y, X, W, indices, seqlen, num_layers, layer_idx, num_lora_adapters, scale);
     }
