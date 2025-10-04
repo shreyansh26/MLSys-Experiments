@@ -132,6 +132,9 @@ def sgmv_shrink_kernel(
             tiled_x = tl.load(x_ptr, mask=offset_k[None, :] < K - k * (BLOCK_K * SPLIT_K), other=0)
             tiled_lora = tl.load(lora_ptr, mask=offset_k[:, None] < K - k * (BLOCK_K * SPLIT_K), other=0)
         
+        if X_ptr.dtype.element_ty != lora_ptr_tensor.dtype.element_ty:
+            tiled_x = tiled_x.to(lora_ptr_tensor.dtype.element_ty)
+        
         acc += tl.dot(tiled_x, tiled_lora)
 
         x_ptr += BLOCK_K * SPLIT_K * X_ptr_stride_d1
