@@ -12,7 +12,7 @@ SAFETENSORS_FAST_GPU=1 vllm bench latency \
     --model "${MODEL}" --trust-remote-code \
     --enable_expert_parallel --tensor-parallel-size 8 \
     --input-len 8192     \
-  	--output-len 1    \
+  	--output-len 128    \
   	--batch-size 1    \
   	--num-iters-warmup 3    \
   	--num-iters 3
