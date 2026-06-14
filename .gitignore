@@ -27,5 +27,6 @@ linear_layer_triton/misc/*.txt
 .ipynb_checkpoints
 libtorch/
 
-compile_logs/
-ref/
+decompose-k/compile_logs/
+decompose-k/ref/
+decompose-k/logs/
