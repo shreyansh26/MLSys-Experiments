@@ -20,12 +20,17 @@ Most scripts require CUDA.
 - `M=N`: `16,32,48,64`
 - `K`: `8192,12288,16384,20480,24576,28672,32768`
 
-It supports three benchmark suites:
+It supports four benchmark suites:
 
 - `epilogue-bf16`: BF16 `torch.mm + relu`, compiled `torch.mm + relu`,
-  Decompose-K + separate ReLU, and Decompose-K fused ReLU.
-- `matmul-bf16`: BF16 plain `torch.mm`, compiled `torch.mm`, and Decompose-K.
-- `matmul-fp32`: FP32 plain `torch.mm`, compiled `torch.mm`, and Decompose-K.
+  custom-op autotuned `mm+relu`, Decompose-K + separate ReLU, and Decompose-K
+  fused ReLU.
+- `matmul-bf16`: BF16 plain `torch.mm`, compiled `torch.mm`, custom-op
+  autotuned `mm`, and standalone Decompose-K.
+- `matmul-fp16`: FP16 plain `torch.mm`, compiled `torch.mm`, custom-op
+  autotuned `mm`, and standalone Decompose-K.
+- `matmul-fp32`: FP32 plain `torch.mm`, compiled `torch.mm`, custom-op
+  autotuned `mm`, and standalone Decompose-K.
 
 Run all suites:
 
@@ -49,6 +54,10 @@ Important naming distinction:
 
 - `compiled_ms` is the `torch.compile` / Inductor path for `torch.mm` or
   `torch.mm + relu`.
+- `custom_op_mm_ms` and `custom_op_mm_relu_ms` are also `torch.compile` /
+  Inductor paths, but through the registered custom-op autotuning API. Inductor
+  internally chooses among the candidates returned by `generate_custom_mm_configs`
+  or `generate_mm_relu_configs`, then the benchmark measures the compiled result.
 - `decompose_k_unfused_ms` and `decompose_k_fused_ms` are standalone handwritten
   Triton Decompose-K paths from `decompose_k_kernel.py`.
 - `decompose_k_unfused_ms` is not expected to exactly match compiled
@@ -56,6 +65,69 @@ Important naming distinction:
   Inductor's generated path can use `extern_kernels.bmm_dtype` plus generated
   Triton reduction and pointwise ReLU kernels, while the benchmark's Decompose-K
   curves use our standalone Triton partial-matmul and reduction kernels.
+
+### Custom-Op Autotune Flow
+
+The custom-op benchmark has two layers of timing.
+
+First, Inductor performs its own internal autotuning while compiling the custom
+op. For plain matmul, `register_mm_static_autotune()` registers
+`decompose_k::mm` with `generate_custom_mm_configs(...)`. For ReLU epilogue,
+`register_mm_relu_static_autotune()` registers `decompose_k::mm_relu` with
+`generate_mm_relu_configs(...)`. These config generators inspect the fake tensor
+metadata for the current compile shape, enumerate valid Decompose-K split counts
+where `K % k_splits == 0`, and return candidates such as:
+
+```python
+CustomOpConfig(mm_impl)
+CustomOpConfig(decompose_k_impl, k_splits=...)
+CustomOpConfig(decompose_k_relu_impl, k_splits=...)
+```
+
+Inductor benchmarks those candidates during `torch.compile(...)`, picks the
+fastest one for that exact shape, and lowers the selected decomposition to
+generated code. That internal autotune step decides whether the custom-op path
+uses plain `mm_impl` or a Decompose-K decomposition.
+
+Second, `bench_decompose_k.py` measures the already-compiled callable with
+`triton.testing.do_bench`. It does not choose the custom-op candidate directly;
+it only measures the result of Inductor's choice:
+
+```text
+generate_*_configs
+  -> Inductor internal autotune chooses a custom-op decomposition
+  -> torch.compile emits the lowered implementation
+  -> bench_decompose_k.py measures the compiled callable
+```
+
+This is separate from the standalone `decompose_k_ms`,
+`decompose_k_unfused_ms`, and `decompose_k_fused_ms` columns. Those standalone
+columns are chosen by explicit Python loops over `candidate_configs(...)` in
+`bench_decompose_k.py`, not by Inductor's custom-op autotuner.
+
+### Dynamo Recompile Limit
+
+The Figure 5 grid is easy to mis-benchmark because it asks `torch.compile` to
+specialize the same Python function over many exact shapes. TorchDynamo's
+default `config.recompile_limit` is `8` per code object. If the benchmark keeps
+recompiling the same function for new `K` values without resetting Dynamo or
+using a valid dynamic-shape strategy, Dynamo eventually logs:
+
+```text
+torch._dynamo hit config.recompile_limit (8)
+```
+
+After that point, later shapes can stop getting fresh optimized graphs and fall
+back to slower execution. In the ReLU epilogue grid this can make
+`custom_op_mm_relu_ms` look excellent through `(M=N=32, K=8192)` and then jump
+up toward the eager/compiled `torch.mm + relu` band for subsequent shapes. That
+is a benchmark cache/recompile artifact, not evidence that the custom-op
+Decompose-K candidate itself became slower.
+
+When changing `bench_decompose_k.py`, keep the exact-shape compiled baselines
+isolated from this limit. Compile time is not part of the latency measurement,
+so it is valid for the harness to reset Dynamo between exact-shape grid points
+before compiling the next measured callable.
 
 Run one suite:
 
@@ -172,6 +244,94 @@ Custom shape:
 `torch.ops.aten.mm.default`. It does not handwrite a Triton Decompose-K kernel;
 instead, it supplies PyTorch-level decompositions and lets Inductor lower and
 autotune them.
+
+The registration call is:
+
+```python
+register_custom_op_autotuning(
+    custom_op=torch.ops.aten.mm.default,
+    config_generator=generate_configs,
+    name="router_mm_relu_autotune",
+    input_gen_fns={
+        "self": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+        "mat2": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+    },
+    dispatch_on={"tensor_name": "self", "dim": 0, "range_upper_bound": 1024},
+    split_points=SPLIT_POINTS,
+    benchmark_with_cudagraphs=True,
+)
+```
+
+Argument meanings:
+
+- `custom_op`: the operation whose Inductor lowering is being customized. Despite
+  the API name, this can be either a real `@torch.library.custom_op` or an
+  existing ATen `OpOverload`. This experiment targets
+  `torch.ops.aten.mm.default`, so the registration applies when compiled code
+  contains `torch.mm`.
+- `configs`: an optional static list of candidate configs. Each entry can be a
+  `CustomOpConfig` or a callable decomposition. Use this when the candidate list
+  is independent of input tensor metadata. This script does not pass `configs`.
+- `config_generator`: an optional function that receives fake tensors keyed by
+  operator argument name and returns the candidate list for the current compile
+  shape. This script uses `generate_configs` so it can inspect `K` and include
+  only Decompose-K split counts where `K % k_splits == 0`. `configs` and
+  `config_generator` are mutually exclusive.
+- `name`: a readable prefix used in autotune logs and generated candidate names.
+  For example, this script produces names beginning with
+  `router_mm_relu_autotune`.
+- `input_gen_fns`: benchmark input generators. During autotuning, Inductor has
+  fake tensors with shape/dtype/stride metadata; these functions create real CUDA
+  tensors with matching metadata so each candidate can be timed. The dictionary
+  keys must match the target op's schema argument names.
+- `dispatch_on`: enables range-based dispatch. Here,
+  `{"tensor_name": "self", "dim": 0, "range_upper_bound": 1024}` means benchmark
+  and dispatch based on `self.shape[0]`, i.e. the `M` dimension of
+  `M x K @ K x N`. `range_upper_bound` is the representative benchmark size for
+  the final open-ended range; it is not an input validity limit.
+- `split_points`: endpoints used with `dispatch_on` to form benchmark ranges. For
+  `SPLIT_POINTS = [1, 8, 32, 128, 512]`, the ranges are approximately `[1, 1]`,
+  `[2, 8]`, `[9, 32]`, `[33, 128]`, `[129, 512]`, and `[513, inf]`. Inductor
+  picks a winner per range and emits a runtime dispatch tree when different
+  ranges need different winners.
+- `min_speedup_threshold`: optional threshold for selecting a non-fallback
+  candidate. The default is `1.0`, meaning any measured speedup over fallback is
+  enough. A value like `1.1` would require a 10 percent speedup. This script uses
+  the default.
+- `benchmark_with_cudagraphs`: whether to use CUDA graph replay for timing the
+  fallback/default implementation during autotuning. This can make comparisons
+  fairer against compiled/generated candidates. It changes autotune measurement,
+  not the mathematical result.
+
+The `input_gen_fns` keys must match the ATen operator schema argument names for
+the op being registered. For `torch.ops.aten.mm.default`, the schema names are
+`self` for the left matrix and `mat2` for the right matrix:
+
+```bash
+.venv/bin/python - <<'PY'
+import torch
+
+op = torch.ops.aten.mm.default
+print(op._schema)
+print([(arg.name, arg.type) for arg in op._schema.arguments])
+PY
+```
+
+Expected output:
+
+```text
+aten::mm(Tensor self, Tensor mat2) -> Tensor
+[('self', Tensor), ('mat2', Tensor)]
+```
+
+That is why the custom autotune registration uses:
+
+```python
+input_gen_fns={
+    "self": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+    "mat2": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+}
+```
 
 ## Inductor `torch.mm + relu` Epilogue POC
 
