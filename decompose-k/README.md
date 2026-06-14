@@ -59,7 +59,7 @@ Important naming distinction:
   internally chooses among the candidates returned by `generate_custom_mm_configs`
   or `generate_mm_relu_configs`, then the benchmark measures the compiled result.
 - `decompose_k_unfused_ms` and `decompose_k_fused_ms` are standalone handwritten
-  Triton Decompose-K paths from `decompose_k_kernel.py`.
+  Triton Decompose-K paths from `decompose_k_triton_kernel.py`.
 - `decompose_k_unfused_ms` is not expected to exactly match compiled
   `torch.mm + relu`, even when Inductor also chooses a Decompose-K lowering.
   Inductor's generated path can use `extern_kernels.bmm_dtype` plus generated
@@ -219,17 +219,17 @@ Expected outputs:
 
 ## Standalone Decompose-K ReLU Kernel
 
-`decompose_k_kernel.py` contains the handwritten Triton Decompose-K
+`decompose_k_triton_kernel.py` contains the handwritten Triton Decompose-K
 partial matmul and reduction/epilogue kernels. It also has a small usage test.
 
 ```bash
-.venv/bin/python decompose_k_kernel.py --warmup 5 --rep 20
+.venv/bin/python decompose_k_triton_kernel.py --warmup 5 --rep 20
 ```
 
 Custom shape:
 
 ```bash
-.venv/bin/python decompose_k_kernel.py \
+.venv/bin/python decompose_k_triton_kernel.py \
   --m 16 \
   --n 16 \
   --k 8192 \

@@ -10,7 +10,7 @@ from typing import Callable
 import torch
 import triton
 
-from decompose_k_kernel import (
+from decompose_k_triton_kernel import (
     KernelConfig,
     candidate_configs,
     decompose_k_matmul_out,
