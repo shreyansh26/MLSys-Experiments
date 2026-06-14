@@ -40,6 +40,7 @@ def _partial_mm(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    INPUT_PRECISION: tl.constexpr,
 ):
     pid = tl.program_id(0)
     split_id = tl.program_id(1)
@@ -72,7 +73,7 @@ def _partial_mm(
         k_mask = k_offsets < k_per_split
         a_vals = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & k_mask[None, :], other=0.0)
         b_vals = tl.load(b_ptrs, mask=k_mask[:, None] & (offs_n[None, :] < N), other=0.0)
-        acc += tl.dot(a_vals, b_vals, out_dtype=tl.float32)
+        acc += tl.dot(a_vals, b_vals, out_dtype=tl.float32, input_precision=INPUT_PRECISION)
 
     partial_ptrs = partials + split_id * stride_ps + offs_m[:, None] * stride_pm + offs_n[
         None, :
@@ -176,6 +177,7 @@ def decompose_k_relu_out(
         BLOCK_N=config.block_n,
         BLOCK_K=config.block_k,
         GROUP_M=config.group_m,
+        INPUT_PRECISION="ieee" if a.dtype is torch.float32 else "tf32",
         num_warps=config.num_warps,
         num_stages=config.num_stages,
     )
@@ -211,6 +213,25 @@ def decompose_k_unfused_relu_out(
 ) -> torch.Tensor:
     decompose_k_relu_out(a, b, c, partials, config, fuse_relu=False)
     return c.relu_()
+
+
+def decompose_k_matmul_out(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    partials: torch.Tensor,
+    config: KernelConfig,
+) -> torch.Tensor:
+    return decompose_k_relu_out(a, b, c, partials, config, fuse_relu=False)
+
+
+def decompose_k_matmul(a: torch.Tensor, b: torch.Tensor, config: KernelConfig) -> torch.Tensor:
+    _check_inputs(a, b, config.split_k)
+    c = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=a.dtype)
+    partials = torch.empty(
+        (config.split_k, a.shape[0], b.shape[1]), device=a.device, dtype=torch.float32
+    )
+    return decompose_k_matmul_out(a, b, c, partials, config)
 
 
 def candidate_configs(split_values: list[int]) -> list[KernelConfig]:
