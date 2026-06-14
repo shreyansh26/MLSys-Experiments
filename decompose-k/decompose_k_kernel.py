@@ -204,17 +204,6 @@ def decompose_k_relu_out(
     return c
 
 
-def decompose_k_unfused_relu_out(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    c: torch.Tensor,
-    partials: torch.Tensor,
-    config: KernelConfig,
-) -> torch.Tensor:
-    decompose_k_relu_out(a, b, c, partials, config, fuse_relu=False)
-    return c.relu_()
-
-
 def decompose_k_matmul_out(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -338,7 +327,7 @@ def main() -> None:
     partials = torch.empty((config.split_k, args.m, args.n), device="cuda", dtype=torch.float32)
 
     decompose_k_relu_out(a, b, fused, partials, config, fuse_relu=True)
-    decompose_k_unfused_relu_out(a, b, unfused, partials, config)
+    decompose_k_matmul_out(a, b, unfused, partials, config).relu_()
     torch.cuda.synchronize()
     torch.testing.assert_close(fused, expected, rtol=args.rtol, atol=args.atol)
     torch.testing.assert_close(unfused, expected, rtol=args.rtol, atol=args.atol)
@@ -350,7 +339,7 @@ def main() -> None:
         return_mode="median",
     )
     unfused_ms = triton.testing.do_bench(
-        lambda: decompose_k_unfused_relu_out(a, b, unfused, partials, config),
+        lambda: decompose_k_matmul_out(a, b, unfused, partials, config).relu_(),
         warmup=args.warmup,
         rep=args.rep,
         return_mode="median",

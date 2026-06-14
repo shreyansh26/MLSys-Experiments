@@ -13,8 +13,8 @@ import triton
 from decompose_k_kernel import (
     KernelConfig,
     candidate_configs,
+    decompose_k_matmul_out,
     decompose_k_relu_out,
-    decompose_k_unfused_relu_out,
     inductor_like_splits,
 )
 
@@ -128,11 +128,11 @@ def best_decompose_k_plain_config(
         c = torch.empty_like(ref)
         partials = torch.empty((config.split_k, m, n), device=a.device, dtype=torch.float32)
         try:
-            decompose_k_relu_out(a, b, c, partials, config, fuse_relu=False)
+            decompose_k_matmul_out(a, b, c, partials, config)
             torch.cuda.synchronize()
             torch.testing.assert_close(c, ref, rtol=rtol, atol=atol)
             ms = bench_ms(
-                lambda: decompose_k_relu_out(a, b, c, partials, config, fuse_relu=False),
+                lambda: decompose_k_matmul_out(a, b, c, partials, config),
                 warmup,
                 rep,
             )
@@ -183,7 +183,7 @@ def best_decompose_k_epilogue_config(
                 rep,
             )
             unfused_ms = bench_ms(
-                lambda: decompose_k_unfused_relu_out(a, b, c, partials, config),
+                lambda: decompose_k_matmul_out(a, b, c, partials, config).relu_(),
                 warmup,
                 rep,
             )
