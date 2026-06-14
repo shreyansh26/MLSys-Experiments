@@ -169,6 +169,47 @@ def register_mm_relu_autotune() -> None:
     )
 
 
+def register_mm_relu_k_autotune(
+    split_points: list[int],
+    range_upper_bound: int,
+) -> None:
+    register_custom_op_autotuning(
+        # Experimental range-dispatch variant for K sweeps. This exposes a
+        # current API limitation: Inductor changes only this dispatch tensor's
+        # representative dimension, but matmul K is shared by both inputs.
+        custom_op=mm_relu_op,
+        config_generator=generate_mm_relu_configs,
+        name="router_mm_relu_fused_k_autotune",
+        input_gen_fns={
+            "a": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+            "b": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+        },
+        dispatch_on={
+            "tensor_name": "a",
+            "dim": 1,
+            "range_upper_bound": range_upper_bound,
+        },
+        split_points=split_points,
+        benchmark_with_cudagraphs=True,
+    )
+
+
+def register_mm_relu_static_autotune() -> None:
+    register_custom_op_autotuning(
+        # Exact-shape autotuning for benchmark harnesses that compile one fixed
+        # shape at a time. This avoids range representative inputs and compares
+        # the fused custom-op candidates at the actual benchmark shape.
+        custom_op=mm_relu_op,
+        config_generator=generate_mm_relu_configs,
+        name="static_mm_relu_fused_autotune",
+        input_gen_fns={
+            "a": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+            "b": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+        },
+        benchmark_with_cudagraphs=True,
+    )
+
+
 def relu_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.relu(torch.mm(a, b))
 

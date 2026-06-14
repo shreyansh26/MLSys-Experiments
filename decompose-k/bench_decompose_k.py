@@ -17,10 +17,17 @@ from decompose_k_kernel import (
     decompose_k_relu_out,
     inductor_like_splits,
 )
+from custom_op_autotune_relu_dispatch import (
+    custom_relu_mm,
+    register_mm_relu_k_autotune,
+    register_mm_relu_static_autotune,
+)
 
 
 DEFAULT_MNS = [16, 32, 48, 64]
 DEFAULT_KS = [8192, 12288, 16384, 20480, 24576, 28672, 32768]
+_CUSTOM_MM_RELU_K_SPLITS: tuple[int, ...] | None = None
+_CUSTOM_MM_RELU_STATIC_REGISTERED = False
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,27 @@ def mm_only(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 def mm_relu(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.relu(torch.mm(a, b))
+
+
+def ensure_custom_mm_relu_k_registered(ks: list[int]) -> None:
+    global _CUSTOM_MM_RELU_K_SPLITS
+    split_points = tuple(sorted(set(ks))[:-1])
+    range_upper_bound = max(ks)
+    if _CUSTOM_MM_RELU_K_SPLITS is None:
+        register_mm_relu_k_autotune(list(split_points), range_upper_bound)
+        _CUSTOM_MM_RELU_K_SPLITS = split_points
+    elif _CUSTOM_MM_RELU_K_SPLITS != split_points:
+        raise RuntimeError(
+            "custom mm+relu K-dispatch autotune is already registered with "
+            f"split_points={list(_CUSTOM_MM_RELU_K_SPLITS)}, got {list(split_points)}"
+        )
+
+
+def ensure_custom_mm_relu_static_registered() -> None:
+    global _CUSTOM_MM_RELU_STATIC_REGISTERED
+    if not _CUSTOM_MM_RELU_STATIC_REGISTERED:
+        register_mm_relu_static_autotune()
+        _CUSTOM_MM_RELU_STATIC_REGISTERED = True
 
 
 def bench_ms(fn: Callable[[], torch.Tensor], warmup: int, rep: int) -> float:
@@ -208,6 +236,7 @@ def line_specs(suite: Suite) -> list[tuple[str, str]]:
         return [
             ("eager_ms", "torch.mm + relu"),
             ("compiled_ms", "compiled torch.mm + relu"),
+            ("custom_op_mm_relu_ms", "custom op autotuned mm+relu"),
             ("decompose_k_unfused_ms", "decomposeK + relu"),
             ("decompose_k_fused_ms", "decomposeK fused relu"),
         ]
@@ -280,13 +309,18 @@ def run_suite(
     warmup: int,
     rep: int,
     compile_mode: str,
+    custom_op_autotune: str,
     rtol: float | None,
     atol: float | None,
     out_dir: Path,
 ) -> None:
     target = mm_relu if suite.epilogue else mm_only
     torch.set_float32_matmul_precision("highest" if suite.dtype == torch.float32 else "high")
-    compiled_target = torch.compile(target, mode=compile_mode)
+    if suite.epilogue:
+        if custom_op_autotune == "dynamic-k":
+            ensure_custom_mm_relu_k_registered(ks)
+        else:
+            ensure_custom_mm_relu_static_registered()
     rtol = suite.rtol if rtol is None else rtol
     atol = suite.atol if atol is None else atol
 
@@ -296,12 +330,29 @@ def run_suite(
 
     rows: list[dict[str, object]] = []
     for mn in mns:
+        compiled_target = None
+        custom_compiled_target = None
+        if suite.epilogue and custom_op_autotune == "dynamic-k":
+            # Experimental path: reuse this callable across the K sweep so the
+            # custom-op split_points try to do range selection instead of
+            # compiling an exact-shape wrapper per K.
+            custom_compiled_target = torch.compile(
+                custom_relu_mm,
+                mode=compile_mode,
+                dynamic=True,
+            )
         for k in ks:
             a = torch.randn((mn, k), device="cuda", dtype=suite.dtype)
             b = torch.randn((k, mn), device="cuda", dtype=suite.dtype)
             ref = target(a, b)
             torch.cuda.synchronize()
 
+            if compiled_target is None or custom_op_autotune == "static":
+                compiled_target = torch.compile(
+                    target,
+                    mode=compile_mode,
+                    dynamic=custom_op_autotune == "dynamic-k",
+                )
             compiled_out = compiled_target(a, b)
             torch.cuda.synchronize()
             torch.testing.assert_close(compiled_out, ref, rtol=rtol, atol=atol)
@@ -319,11 +370,28 @@ def run_suite(
                 "compiled_ms": compiled_ms,
             }
             if suite.epilogue:
+                if custom_compiled_target is None:
+                    custom_compiled_target = torch.compile(
+                        custom_relu_mm,
+                        mode=compile_mode,
+                        dynamic=False,
+                    )
+                custom_out = custom_compiled_target(a, b)
+                torch.cuda.synchronize()
+                torch.testing.assert_close(custom_out, ref, rtol=rtol, atol=atol)
+                custom_op_ms = bench_ms(
+                    lambda: custom_compiled_target(a, b),
+                    warmup,
+                    rep,
+                )
                 fused_ms, unfused_ms, config = best_decompose_k_epilogue_config(
                     a, b, ref, split_limit, warmup, rep, rtol, atol
                 )
                 row.update(
                     {
+                        "custom_op_mm_relu_ms": custom_op_ms,
+                        "custom_op_speedup_vs_eager": eager_ms / custom_op_ms,
+                        "custom_op_speedup_vs_compiled": compiled_ms / custom_op_ms,
                         "decompose_k_unfused_ms": unfused_ms,
                         "decompose_k_fused_ms": fused_ms,
                         "fused_speedup_vs_eager": eager_ms / fused_ms,
@@ -332,6 +400,7 @@ def run_suite(
                     }
                 )
                 metric = (
+                    f"custom_op={custom_op_ms:.4f}ms "
                     f"unfused={unfused_ms:.4f}ms fused={fused_ms:.4f}ms "
                     f"speedup_vs_compiled={compiled_ms / fused_ms:.2f}x"
                 )
@@ -388,6 +457,12 @@ def main() -> None:
     parser.add_argument("--rep", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--compile-mode", default="max-autotune-no-cudagraphs")
+    parser.add_argument(
+        "--custom-op-autotune",
+        choices=["static", "dynamic-k"],
+        default="static",
+        help="Use exact-shape custom-op autotuning or experimental K-range dispatch.",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("bench_results"))
     parser.add_argument("--rtol", type=float)
     parser.add_argument("--atol", type=float)
@@ -413,6 +488,7 @@ def main() -> None:
             warmup=args.warmup,
             rep=args.rep,
             compile_mode=args.compile_mode,
+            custom_op_autotune=args.custom_op_autotune,
             rtol=args.rtol,
             atol=args.atol,
             out_dir=args.out_dir,
