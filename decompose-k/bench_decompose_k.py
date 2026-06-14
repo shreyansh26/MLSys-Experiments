@@ -18,13 +18,16 @@ from decompose_k_kernel import (
     inductor_like_splits,
 )
 from custom_op_autotune_relu_dispatch import (
+    custom_mm,
     custom_relu_mm,
+    register_mm_static_autotune,
     register_mm_relu_static_autotune,
 )
 
 
 DEFAULT_MNS = [16, 32, 48, 64]
 DEFAULT_KS = [8192, 12288, 16384, 20480, 24576, 28672, 32768]
+_CUSTOM_MM_REGISTERED = False
 _CUSTOM_MM_RELU_REGISTERED = False
 
 
@@ -58,6 +61,16 @@ SUITES = {
         epilogue=False,
         csv_name="plain_matmul_bf16.csv",
         plot_prefix="plain_matmul_bf16",
+        rtol=2e-2,
+        atol=1e-2,
+    ),
+    "matmul-fp16": Suite(
+        name="matmul-fp16",
+        title="Plain Matmul, FP16",
+        dtype=torch.float16,
+        epilogue=False,
+        csv_name="plain_matmul_fp16.csv",
+        plot_prefix="plain_matmul_fp16",
         rtol=2e-2,
         atol=1e-2,
     ),
@@ -105,6 +118,13 @@ def mm_only(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 def mm_relu(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.relu(torch.mm(a, b))
+
+
+def ensure_custom_mm_registered() -> None:
+    global _CUSTOM_MM_REGISTERED
+    if not _CUSTOM_MM_REGISTERED:
+        register_mm_static_autotune()
+        _CUSTOM_MM_REGISTERED = True
 
 
 def ensure_custom_mm_relu_registered() -> None:
@@ -227,6 +247,7 @@ def line_specs(suite: Suite) -> list[tuple[str, str]]:
     return [
         ("eager_ms", "torch.mm"),
         ("compiled_ms", "compiled torch.mm"),
+        ("custom_op_mm_ms", "custom op autotuned mm"),
         ("decompose_k_ms", "decomposeK"),
     ]
 
@@ -301,6 +322,8 @@ def run_suite(
     torch.set_float32_matmul_precision("highest" if suite.dtype == torch.float32 else "high")
     if suite.epilogue:
         ensure_custom_mm_relu_registered()
+    else:
+        ensure_custom_mm_registered()
     rtol = suite.rtol if rtol is None else rtol
     atol = suite.atol if atol is None else atol
 
@@ -316,6 +339,10 @@ def run_suite(
             ref = target(a, b)
             torch.cuda.synchronize()
 
+            # Each grid point is an exact-shape benchmark. Reset Dynamo so the
+            # sweep does not hit the per-function recompile limit and fall back
+            # to slower execution after several K values.
+            torch._dynamo.reset()
             compiled_target = torch.compile(target, mode=compile_mode, dynamic=False)
             compiled_out = compiled_target(a, b)
             torch.cuda.synchronize()
@@ -368,17 +395,34 @@ def run_suite(
                     f"speedup_vs_compiled={compiled_ms / fused_ms:.2f}x"
                 )
             else:
+                custom_compiled_target = torch.compile(
+                    custom_mm,
+                    mode=compile_mode,
+                    dynamic=False,
+                )
+                custom_out = custom_compiled_target(a, b)
+                torch.cuda.synchronize()
+                torch.testing.assert_close(custom_out, ref, rtol=rtol, atol=atol)
+                custom_op_ms = bench_ms(
+                    lambda: custom_compiled_target(a, b),
+                    warmup,
+                    rep,
+                )
                 decompose_ms, config = best_decompose_k_plain_config(
                     a, b, ref, split_limit, warmup, rep, rtol, atol
                 )
                 row.update(
                     {
+                        "custom_op_mm_ms": custom_op_ms,
+                        "custom_op_speedup_vs_eager": eager_ms / custom_op_ms,
+                        "custom_op_speedup_vs_compiled": compiled_ms / custom_op_ms,
                         "decompose_k_ms": decompose_ms,
                         "decompose_k_speedup_vs_eager": eager_ms / decompose_ms,
                         "decompose_k_speedup_vs_compiled": compiled_ms / decompose_ms,
                     }
                 )
                 metric = (
+                    f"custom_op={custom_op_ms:.4f}ms "
                     f"decomposeK={decompose_ms:.4f}ms "
                     f"speedup_vs_compiled={compiled_ms / decompose_ms:.2f}x"
                 )
