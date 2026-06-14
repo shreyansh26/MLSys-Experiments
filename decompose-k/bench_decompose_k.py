@@ -418,7 +418,7 @@ def main() -> None:
             out_dir=args.out_dir,
         )
 
-    if os.environ.get("DECOMPOSE_K_FORCE_EXIT", "0") == "1":
+    if os.environ.get("DECOMPOSE_K_FORCE_EXIT", "1") == "1":
         os._exit(0)
 
 
