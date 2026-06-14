@@ -36,6 +36,12 @@ def mm_relu_impl(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.relu(torch.mm(a, b))
 
 
+def bmm_accumulate_fp32(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    if a.dtype in (torch.float16, torch.bfloat16):
+        return torch.bmm(a, b, out_dtype=torch.float32)
+    return torch.bmm(a, b).to(torch.float32)
+
+
 def decompose_k_impl(
     self: torch.Tensor,
     mat2: torch.Tensor,
@@ -51,7 +57,7 @@ def decompose_k_impl(
     k_part = k // k_splits
     a_reshaped = self.reshape(m, k_splits, k_part).permute(1, 0, 2)
     b_reshaped = mat2.reshape(k_splits, k_part, n)
-    partials = torch.bmm(a_reshaped, b_reshaped, out_dtype=torch.float32)
+    partials = bmm_accumulate_fp32(a_reshaped, b_reshaped)
     return partials.sum(dim=0).to(self.dtype)
 
 
@@ -70,8 +76,18 @@ def decompose_k_relu_impl(
     k_part = k // k_splits
     a_reshaped = a.reshape(m, k_splits, k_part).permute(1, 0, 2)
     b_reshaped = b.reshape(k_splits, k_part, n)
-    partials = torch.bmm(a_reshaped, b_reshaped, out_dtype=torch.float32)
+    partials = bmm_accumulate_fp32(a_reshaped, b_reshaped)
     return torch.relu(partials.sum(dim=0).to(a.dtype))
+
+
+@torch.library.custom_op("decompose_k::mm", mutates_args=())
+def mm_op(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return mm_impl(a, b)
+
+
+@mm_op.register_fake
+def _(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return torch.empty((a.shape[0], b.shape[1]), dtype=a.dtype, device=a.device)
 
 
 @torch.library.custom_op("decompose_k::mm_relu", mutates_args=())
@@ -86,6 +102,19 @@ def _(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 def generate_mm_configs(fake_tensors: dict[str, torch.Tensor]) -> list[CustomOpConfig]:
     k = int(fake_tensors["self"].shape[1])
+    splits = [k_splits for k_splits in K_SPLITS if k % k_splits == 0]
+
+    configs = [CustomOpConfig(mm_impl)]
+    configs.extend(
+        CustomOpConfig(decompose_k_impl, k_splits=k_splits) for k_splits in splits
+    )
+    return configs
+
+
+def generate_custom_mm_configs(
+    fake_tensors: dict[str, torch.Tensor],
+) -> list[CustomOpConfig]:
+    k = int(fake_tensors["a"].shape[1])
     splits = [k_splits for k_splits in K_SPLITS if k % k_splits == 0]
 
     configs = [CustomOpConfig(mm_impl)]
@@ -185,8 +214,27 @@ def register_mm_relu_static_autotune() -> None:
     )
 
 
+def register_mm_static_autotune() -> None:
+    register_custom_op_autotuning(
+        # Exact-shape autotuning for the plain matmul custom op. This mirrors
+        # the ReLU benchmark path but keeps the custom-op boundary at mm(a, b).
+        custom_op=mm_op,
+        config_generator=generate_custom_mm_configs,
+        name="static_mm_fused_autotune",
+        input_gen_fns={
+            "a": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+            "b": lambda fake: torch.randn_like(fake, device="cuda") * 0.1,
+        },
+        benchmark_with_cudagraphs=True,
+    )
+
+
 def relu_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.relu(torch.mm(a, b))
+
+
+def custom_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return mm_op(a, b)
 
 
 def custom_relu_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
