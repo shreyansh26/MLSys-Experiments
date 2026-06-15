@@ -13,9 +13,9 @@ Use the project virtual environment:
 
 Most scripts require CUDA.
 
-## ReLU Epilogue And Figure 5 Benchmarks
+## ReLU Epilogue And Large-K Benchmarks
 
-`bench_decompose_k.py` runs the Figure 5 shape grid:
+`bench_decompose_k.py` runs a small-M/N, large-K shape grid:
 
 - `M=N`: `16,32,48,64`
 - `K`: `8192,12288,16384,20480,24576,28672,32768`
@@ -42,7 +42,7 @@ Run all suites:
 ```
 
 The default `--compile-mode` is `max-autotune-no-cudagraphs`. A quick GPU3
-comparison on representative Figure 5 shapes picked it over `max-autotune` for
+comparison on representative benchmark shapes picked it over `max-autotune` for
 all tested BF16 epilogue, BF16 matmul, and FP32 matmul cases.
 
 For the FP32 matmul suite, the benchmark uses true FP32 behavior: PyTorch matmul
@@ -144,7 +144,7 @@ winner.
 
 ### Dynamo Recompile Limit
 
-The Figure 5 grid is easy to mis-benchmark because it asks `torch.compile` to
+This shape grid is easy to mis-benchmark because it asks `torch.compile` to
 specialize the same Python function over many exact shapes. TorchDynamo's
 default `config.recompile_limit` is `8` per code object. If the benchmark keeps
 recompiling the same function for new `K` values without resetting Dynamo or
@@ -275,6 +275,194 @@ Custom shape:
   --warmup 5 \
   --rep 20
 ```
+
+## Optimized Triton Decompose-K Kernel
+
+`kernels/decompose_k_triton_kernel_optimized.py` keeps the same high-level
+Decompose-K structure as `kernels/decompose_k_triton_kernel.py`:
+
+1. Compute fp32 partial matmul outputs shaped like `[split_k, M, N]`.
+2. Reduce those partials into the final output, optionally applying ReLU during
+   the final store.
+
+The optimized version does not use split-K atomics. That matters for epilogues:
+an atomic-add design would still need all partial updates to finish before the
+epilogue result is meaningful. The optimized kernel instead stays in the
+Decompose-K setup and makes the explicit reduction cheaper and more parallel.
+
+### Reducer Shape
+
+The baseline reducer is output-tile shaped. One Triton program owns a
+`BLOCK_M x BLOCK_N` tile, carries an accumulator with that same 2D shape, and
+loops over all `SPLIT_K` partials:
+
+```python
+acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+for split_id in range(0, SPLIT_K):
+    acc += tl.load(partials + split_id * stride_ps + tile_offsets)
+```
+
+This works, but it ties reduction parallelism to the matmul output tile. For a
+tiny output such as `M=N=16`, a `16x16` reducer tile can mean only one reducer
+program for the whole output, and that program serially walks the split
+dimension.
+
+The optimized reducer flattens the output matrix into a 1D element index:
+
+```text
+x = m * N + n
+```
+
+It then treats the Decompose-K split as the reduction axis:
+
+```text
+vals: [XBLOCK, RBLOCK]
+acc:  [XBLOCK]
+```
+
+Conceptually, each reducer program does:
+
+```python
+x_base = program_id * XBLOCK + arange(0, XBLOCK)
+r = arange(0, RBLOCK)
+vals = partials[r, x_base]
+acc = sum(vals, axis=1)
+store c[x_base] = acc
+```
+
+Each `x` is one final output element. There is no later combine step across
+programs: every reducer program owns a disjoint slice of flattened output
+elements, reduces all split partials for those elements, applies ReLU if
+requested, and writes the final values directly.
+
+Example for `M=N=16`, where the output has 256 elements:
+
+```text
+XBLOCK=32
+program 0 writes C_flat[0:32]
+program 1 writes C_flat[32:64]
+...
+program 7 writes C_flat[224:256]
+```
+
+This helps because the reduction is now expressed as an actual vector reduction
+over the split axis via `tl.sum(vals, 1)`, rather than as a serial loop over
+`SPLIT_K` inside a tile-shaped accumulator. It also decouples reducer tiling
+from matmul tiling: the partial matmul can use `16x16`, `64x32`, or `64x64`
+tiles, while the reducer can independently use a small `XBLOCK` chosen for
+split-reduction efficiency.
+
+### Flat Contiguous Fast Path
+
+The optimized reducer has a fast path for the benchmark's normal allocation
+pattern:
+
+```python
+if partials.is_contiguous() and c.is_contiguous():
+    ...
+```
+
+For contiguous row-major tensors, the memory layout is:
+
+```text
+partials[s, m, n] address = partials_base + s * (M * N) + (m * N + n)
+c[m, n] address           = c_base + (m * N + n)
+```
+
+Since `x = m * N + n`, the hot reducer address calculation becomes:
+
+```python
+tl.load(partials + r * stride_ps + x)
+tl.store(c + x_base, acc)
+```
+
+This avoids converting `x` back into `(m, n)` with division/modulo and avoids
+general strided address math in the common path. The generic strided reducer is
+still present as a fallback for non-contiguous views or `empty_strided` outputs,
+for example `c = base[:, ::2]` or `partials = partials_base[:, :, ::2]`.
+
+### Warp Count And Tile Size
+
+The optimized config set adds small low-warp partial matmul tiles as well as
+larger BMM-like tiles. This is important because the benchmark shapes have tiny
+outputs and large K. A `16x16` output tile has only 256 fp32 accumulators. Even
+with a K slice such as 64 or 128, many of these partial matmul programs are too
+small to justify 4 warps.
+
+Using 4 warps means 128 CUDA threads are assigned to one Triton program. For
+small output tiles this can add overhead without enough independent work to keep
+all warps busy:
+
+- more warp scheduling and synchronization overhead per program
+- more register pressure per resident program
+- fewer resident programs per SM
+- less ability to cover latency by running many independent split programs
+
+The optimized search therefore includes 1-warp and 2-warp configs such as
+`16x16x64` and `16x16x128`. These can be faster for small `M/N` because the GPU
+can keep more independent programs resident and each program has lower overhead.
+
+Larger output tiles are different. A `64x32` or `64x64` output tile has many
+more accumulators, and with a nontrivial K slice it has substantially more work
+per program:
+
+```text
+16x16x128 = 32,768 multiply-add positions
+64x32x64  = 131,072 multiply-add positions
+64x64x64  = 262,144 multiply-add positions
+64x64x128 = 524,288 multiply-add positions
+```
+
+So 4 warps can win for the larger tiles. The optimized config set includes both
+families and lets the benchmark choose per shape.
+
+### Split Selection
+
+The optimized kernel also expands the split candidates. The baseline split
+heuristic prefers a limited ordered set of divisors where the K partition is
+large enough. The optimized version explicitly tries power-of-two-style split
+counts:
+
+```python
+K_SPLITS = (2, 4, 8, 16, 32, 64, 128, 256)
+```
+
+and then appends the baseline split candidates. This better matches the custom-op
+Decompose-K setup and exposes more useful parallelism for small output, large-K
+shapes. The reducer uses a power-of-two `RBLOCK` for the split axis, so these
+split counts also map naturally to the vectorized reduction.
+
+### Final BF16 Results
+
+The strict validation runs benchmark the optimized Triton candidate against the
+saved custom-op timings in `bench_results`, without rerunning custom-op
+autotune:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 .venv/bin/python -u bench_candidate_decompose_k.py \
+  --module kernels.decompose_k_triton_kernel_optimized \
+  --suites epilogue-bf16 \
+  --warmup 10 \
+  --rep 50 \
+  --out-csv bench_results/optimized_epilogue_bf16_rep50_full.csv
+
+CUDA_VISIBLE_DEVICES=5 .venv/bin/python -u bench_candidate_decompose_k.py \
+  --module kernels.decompose_k_triton_kernel_optimized \
+  --suites matmul-bf16 \
+  --warmup 10 \
+  --rep 50 \
+  --out-csv bench_results/optimized_matmul_bf16_rep50_full.csv
+```
+
+The resulting BF16 comparison was:
+
+- `epilogue-bf16`: `28/28` wins versus saved custom-op timings, with
+  `custom_over_candidate_speedup` min/median/max of `1.057x / 1.094x / 1.170x`.
+- `matmul-bf16`: `28/28` wins versus saved custom-op timings, with
+  `custom_over_candidate_speedup` min/median/max of `1.005x / 1.022x / 1.105x`.
+
+The narrowest plain-matmul wins are close to benchmark noise, so the strict
+`warmup=10, rep=50` CSVs are the preferred evidence for those rows.
 
 ## Inductor Custom-Op Autotuning Exploration
 
