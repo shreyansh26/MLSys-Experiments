@@ -1,20 +1,18 @@
 """Optimized Triton Decompose-K matmul with vectorized split reduction.
 
 This keeps the baseline ``kernels.decompose_k_triton_kernel`` implementation
-intact and adds a separate candidate optimized around the Figure 5 shape
-regime: small M/N, large K, and explicit Decompose-K partials.
+intact and adds a separate candidate optimized around small-M/N, large-K
+matmuls with explicit Decompose-K partials.
 """
 
 import torch
 import triton
 import triton.language as tl
 
-from kernels.decompose_k_triton_kernel import (  # noqa: F401
+from kernels.decompose_k_triton_kernel import (
     KernelConfig,
     _check_inputs,
     _partial_mm,
-    decompose_k_matmul,
-    divisors,
     inductor_like_splits as _baseline_splits,
 )
 
