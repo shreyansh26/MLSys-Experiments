@@ -1,2 +1,5 @@
 bench_results_old/
 bench_candidate_decompose_k.py
+compile_logs/
+ref/
+logs/
