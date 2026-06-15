@@ -60,11 +60,27 @@ Important naming distinction:
   or `generate_mm_relu_configs`, then the benchmark measures the compiled result.
 - `decompose_k_unfused_ms` and `decompose_k_fused_ms` are standalone handwritten
   Triton Decompose-K paths from `decompose_k_triton_kernel.py`.
+- `decompose_k_fused_vs_unfused_speedup` is the standalone ReLU epilogue fusion
+  benefit: `decompose_k_unfused_ms / decompose_k_fused_ms`. It compares the same
+  standalone Decompose-K config with ReLU applied as a separate in-place op
+  versus ReLU fused into the reduction/store epilogue.
 - `decompose_k_unfused_ms` is not expected to exactly match compiled
   `torch.mm + relu`, even when Inductor also chooses a Decompose-K lowering.
   Inductor's generated path can use `extern_kernels.bmm_dtype` plus generated
   Triton reduction and pointwise ReLU kernels, while the benchmark's Decompose-K
   curves use our standalone Triton partial-matmul and reduction kernels.
+
+CSV columns are grouped as:
+
+1. Shape and dtype metadata.
+2. Timing columns, such as `eager_ms`, `compiled_ms`, `custom_op_mm_ms` or
+   `custom_op_mm_relu_ms`, and the standalone Decompose-K timing columns.
+3. Speedup columns. Ratios are always `baseline_ms / implementation_ms`, so
+   values above `1.0` mean the implementation is faster than the named baseline.
+4. Config columns. `custom_op_*` columns describe the Inductor custom-op
+   autotune winner captured during compile, while `standalone_*` columns
+   describe the handwritten Triton config chosen by the explicit
+   `candidate_configs(...)` search in `bench_decompose_k.py`.
 
 ### Custom-Op Autotune Flow
 
@@ -89,6 +105,17 @@ fastest one for that exact shape, and lowers the selected decomposition to
 generated code. That internal autotune step decides whether the custom-op path
 uses plain `mm_impl` or a Decompose-K decomposition.
 
+`bench_decompose_k.py` captures that Inductor decision while compiling the
+custom-op path and writes it to the CSV:
+
+- `custom_op_autotune_name`: the Inductor custom-op autotune group name.
+- `custom_op_best_impl`: selected implementation, such as `mm_impl`,
+  `mm_relu_impl`, `decompose_k_impl`, `decompose_k_relu_impl`, or `fallback`.
+- `custom_op_k_splits`: selected Decompose-K split count when the winner is a
+  Decompose-K candidate; empty for plain/fallback winners.
+- `custom_op_choice_name`: lower-level Inductor choice name for debugging and
+  matching against autotune logs.
+
 Second, `bench_decompose_k.py` measures the already-compiled callable with
 `triton.testing.do_bench`. It does not choose the custom-op candidate directly;
 it only measures the result of Inductor's choice:
@@ -104,6 +131,16 @@ This is separate from the standalone `decompose_k_ms`,
 `decompose_k_unfused_ms`, and `decompose_k_fused_ms` columns. Those standalone
 columns are chosen by explicit Python loops over `candidate_configs(...)` in
 `bench_decompose_k.py`, not by Inductor's custom-op autotuner.
+
+The standalone config columns are:
+
+- `standalone_split_k`
+- `standalone_block_m`
+- `standalone_block_n`
+- `standalone_block_k`
+
+Those are handwritten Triton kernel parameters, not the Inductor custom-op
+winner.
 
 ### Dynamo Recompile Limit
 
@@ -213,6 +250,7 @@ Expected outputs:
 
 - `fig5_epilogue_results/epilogue_relu_bf16.csv`
 - `fig5_epilogue_results/plain_matmul_bf16.csv`
+- `fig5_epilogue_results/plain_matmul_fp16.csv`
 - `fig5_epilogue_results/plain_matmul_fp32.csv`
 - `fig5_epilogue_results/*_overall_grid.png`
 - `fig5_epilogue_results/*_mn16.png`, `*_mn32.png`, `*_mn48.png`, `*_mn64.png`

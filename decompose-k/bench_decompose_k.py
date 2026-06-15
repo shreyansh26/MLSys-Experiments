@@ -43,6 +43,14 @@ class Suite:
     atol: float
 
 
+@dataclass(frozen=True)
+class CustomOpWinner:
+    autotune_name: str
+    impl: str
+    k_splits: int | None
+    choice_name: str
+
+
 SUITES = {
     "epilogue-bf16": Suite(
         name="epilogue-bf16",
@@ -132,6 +140,63 @@ def ensure_custom_mm_relu_registered() -> None:
     if not _CUSTOM_MM_RELU_REGISTERED:
         register_mm_relu_static_autotune()
         _CUSTOM_MM_RELU_REGISTERED = True
+
+
+def custom_op_winner_from_choice(name: str, choice: object) -> CustomOpWinner:
+    decomposition = getattr(choice, "decomposition", None)
+    kwargs = getattr(choice, "decomposition_kwargs", {}) or {}
+    choice_name = getattr(choice, "name", type(choice).__name__)
+    impl = decomposition.__name__ if decomposition is not None else "fallback"
+    return CustomOpWinner(
+        autotune_name=name,
+        impl=impl,
+        k_splits=kwargs.get("k_splits"),
+        choice_name=str(choice_name),
+    )
+
+
+def compile_custom_op_with_winner(
+    fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    a: torch.Tensor,
+    b: torch.Tensor,
+    compile_mode: str,
+) -> tuple[
+    Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    torch.Tensor,
+    CustomOpWinner,
+]:
+    import torch._inductor.kernel.custom_op as custom_op_kernel
+
+    original_autotune_select = custom_op_kernel.autotune_select_algorithm
+    winner: CustomOpWinner | None = None
+
+    def capture_autotune_select(*args: object, **kwargs: object) -> tuple[object, object]:
+        nonlocal winner
+        selected_result, winning_choice = original_autotune_select(*args, **kwargs)
+        name = str(kwargs.get("name", args[0] if args else "unknown"))
+        if name.startswith("static_mm"):
+            winner = custom_op_winner_from_choice(name, winning_choice)
+        return selected_result, winning_choice
+
+    # Inductor does not expose this winner on the compiled callable. Capture it
+    # from the custom-op lowering path during the compile triggered by first use.
+    custom_op_kernel.autotune_select_algorithm = capture_autotune_select
+    try:
+        compiled_target = torch.compile(fn, mode=compile_mode, dynamic=False)
+        out = compiled_target(a, b)
+        torch.cuda.synchronize()
+    finally:
+        custom_op_kernel.autotune_select_algorithm = original_autotune_select
+
+    if winner is None:
+        winner = CustomOpWinner(
+            autotune_name="not_captured",
+            impl="not_captured",
+            k_splits=None,
+            choice_name="not_captured",
+        )
+
+    return compiled_target, out, winner
 
 
 def bench_ms(fn: Callable[[], torch.Tensor], warmup: int, rep: int) -> float:
@@ -306,6 +371,51 @@ def plot_results(rows: list[dict[str, object]], suite: Suite, out_dir: Path) -> 
         plot_one(subset, suite, out_dir, f"_mn{mn}", f", M=N={mn}")
 
 
+def csv_fieldnames(suite: Suite) -> list[str]:
+    base = ["suite", "m", "n", "k", "dtype"]
+    custom_config = [
+        "custom_op_autotune_name",
+        "custom_op_best_impl",
+        "custom_op_k_splits",
+        "custom_op_choice_name",
+    ]
+    standalone_config = [
+        "standalone_split_k",
+        "standalone_block_m",
+        "standalone_block_n",
+        "standalone_block_k",
+    ]
+    if suite.epilogue:
+        return [
+            *base,
+            "eager_ms",
+            "compiled_ms",
+            "custom_op_mm_relu_ms",
+            "decompose_k_unfused_ms",
+            "decompose_k_fused_ms",
+            "custom_op_speedup_vs_eager",
+            "custom_op_speedup_vs_compiled",
+            "decompose_k_fused_speedup_vs_eager",
+            "decompose_k_fused_speedup_vs_compiled",
+            "decompose_k_fused_vs_unfused_speedup",
+            *custom_config,
+            *standalone_config,
+        ]
+    return [
+        *base,
+        "eager_ms",
+        "compiled_ms",
+        "custom_op_mm_ms",
+        "decompose_k_ms",
+        "custom_op_speedup_vs_eager",
+        "custom_op_speedup_vs_compiled",
+        "decompose_k_speedup_vs_eager",
+        "decompose_k_speedup_vs_compiled",
+        *custom_config,
+        *standalone_config,
+    ]
+
+
 def run_suite(
     suite: Suite,
     mns: list[int],
@@ -361,13 +471,14 @@ def run_suite(
                 "compiled_ms": compiled_ms,
             }
             if suite.epilogue:
-                custom_compiled_target = torch.compile(
-                    custom_relu_mm,
-                    mode=compile_mode,
-                    dynamic=False,
+                custom_compiled_target, custom_out, custom_winner = (
+                    compile_custom_op_with_winner(
+                        custom_relu_mm,
+                        a,
+                        b,
+                        compile_mode,
+                    )
                 )
-                custom_out = custom_compiled_target(a, b)
-                torch.cuda.synchronize()
                 torch.testing.assert_close(custom_out, ref, rtol=rtol, atol=atol)
                 custom_op_ms = bench_ms(
                     lambda: custom_compiled_target(a, b),
@@ -384,9 +495,9 @@ def run_suite(
                         "custom_op_speedup_vs_compiled": compiled_ms / custom_op_ms,
                         "decompose_k_unfused_ms": unfused_ms,
                         "decompose_k_fused_ms": fused_ms,
-                        "fused_speedup_vs_eager": eager_ms / fused_ms,
-                        "fused_speedup_vs_compiled": compiled_ms / fused_ms,
-                        "epilogue_fusion_speedup": unfused_ms / fused_ms,
+                        "decompose_k_fused_speedup_vs_eager": eager_ms / fused_ms,
+                        "decompose_k_fused_speedup_vs_compiled": compiled_ms / fused_ms,
+                        "decompose_k_fused_vs_unfused_speedup": unfused_ms / fused_ms,
                     }
                 )
                 metric = (
@@ -395,13 +506,14 @@ def run_suite(
                     f"speedup_vs_compiled={compiled_ms / fused_ms:.2f}x"
                 )
             else:
-                custom_compiled_target = torch.compile(
-                    custom_mm,
-                    mode=compile_mode,
-                    dynamic=False,
+                custom_compiled_target, custom_out, custom_winner = (
+                    compile_custom_op_with_winner(
+                        custom_mm,
+                        a,
+                        b,
+                        compile_mode,
+                    )
                 )
-                custom_out = custom_compiled_target(a, b)
-                torch.cuda.synchronize()
                 torch.testing.assert_close(custom_out, ref, rtol=rtol, atol=atol)
                 custom_op_ms = bench_ms(
                     lambda: custom_compiled_target(a, b),
@@ -429,23 +541,30 @@ def run_suite(
 
             row.update(
                 {
-                    "split_k": config.split_k,
-                    "block_m": config.block_m,
-                    "block_n": config.block_n,
-                    "block_k": config.block_k,
+                    "custom_op_autotune_name": custom_winner.autotune_name,
+                    "custom_op_best_impl": custom_winner.impl,
+                    "custom_op_k_splits": (
+                        "" if custom_winner.k_splits is None else custom_winner.k_splits
+                    ),
+                    "custom_op_choice_name": custom_winner.choice_name,
+                    "standalone_split_k": config.split_k,
+                    "standalone_block_m": config.block_m,
+                    "standalone_block_n": config.block_n,
+                    "standalone_block_k": config.block_k,
                 }
             )
             rows.append(row)
             print(
                 f"(M=N={mn}, K={k}) eager={eager_ms:.4f}ms "
                 f"compiled={compiled_ms:.4f}ms {metric} "
-                f"config=split{config.split_k}/bm{config.block_m}/bn{config.block_n}/bk{config.block_k}",
+                f"custom={custom_winner.impl}/split{custom_winner.k_splits} "
+                f"standalone=split{config.split_k}/bm{config.block_m}/bn{config.block_n}/bk{config.block_k}",
                 flush=True,
             )
 
     csv_path = out_dir / suite.csv_name
     with csv_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=csv_fieldnames(suite))
         writer.writeheader()
         writer.writerows(rows)
 
