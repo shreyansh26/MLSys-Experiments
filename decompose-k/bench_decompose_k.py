@@ -10,14 +10,14 @@ from typing import Callable
 import torch
 import triton
 
-# from decompose_k_triton_kernel import (
+# from kernels.decompose_k_triton_kernel import (
 #     KernelConfig,
 #     candidate_configs,
 #     decompose_k_matmul_out,
 #     decompose_k_relu_out,
 #     inductor_like_splits,
 # )
-from decompose_k_triton_kernel_optimized import (
+from kernels.decompose_k_triton_kernel_optimized import (
     KernelConfig,
     candidate_configs,
     decompose_k_matmul_out,

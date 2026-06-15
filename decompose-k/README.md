@@ -59,7 +59,7 @@ Important naming distinction:
   internally chooses among the candidates returned by `generate_custom_mm_configs`
   or `generate_mm_relu_configs`, then the benchmark measures the compiled result.
 - `decompose_k_unfused_ms` and `decompose_k_fused_ms` are standalone handwritten
-  Triton Decompose-K paths from `decompose_k_triton_kernel.py`.
+  Triton Decompose-K paths from `kernels/decompose_k_triton_kernel.py`.
 - `decompose_k_fused_vs_unfused_speedup` is the standalone ReLU epilogue fusion
   benefit: `decompose_k_unfused_ms / decompose_k_fused_ms`. It compares the same
   standalone Decompose-K config with ReLU applied as a separate in-place op
@@ -257,17 +257,17 @@ Expected outputs:
 
 ## Standalone Decompose-K ReLU Kernel
 
-`decompose_k_triton_kernel.py` contains the handwritten Triton Decompose-K
+`kernels/decompose_k_triton_kernel.py` contains the handwritten Triton Decompose-K
 partial matmul and reduction/epilogue kernels. It also has a small usage test.
 
 ```bash
-.venv/bin/python decompose_k_triton_kernel.py --warmup 5 --rep 20
+.venv/bin/python -m kernels.decompose_k_triton_kernel --warmup 5 --rep 20
 ```
 
 Custom shape:
 
 ```bash
-.venv/bin/python decompose_k_triton_kernel.py \
+.venv/bin/python -m kernels.decompose_k_triton_kernel \
   --m 16 \
   --n 16 \
   --k 8192 \
