@@ -37,8 +37,8 @@ Run all suites:
 ```bash
 .venv/bin/python -u bench_decompose_k.py \
   --suites all \
-  --out-dir fig5_epilogue_results \
-  2>&1 | tee fig5_epilogue_results.log
+  --out-dir bench_results \
+  2>&1 | tee bench_results.log
 ```
 
 The default `--compile-mode` is `max-autotune-no-cudagraphs`. A quick GPU3
@@ -171,15 +171,15 @@ Run one suite:
 ```bash
 .venv/bin/python -u bench_decompose_k.py \
   --suites epilogue-bf16 \
-  --out-dir fig5_epilogue_results
+  --out-dir bench_results
 
 .venv/bin/python -u bench_decompose_k.py \
   --suites matmul-bf16 \
-  --out-dir fig5_epilogue_results
+  --out-dir bench_results
 
 .venv/bin/python -u bench_decompose_k.py \
   --suites matmul-fp32 \
-  --out-dir fig5_epilogue_results
+  --out-dir bench_results
 ```
 
 Quick smoke test:
@@ -248,12 +248,12 @@ Expected FP32 rerun outputs:
 
 Expected outputs:
 
-- `fig5_epilogue_results/epilogue_relu_bf16.csv`
-- `fig5_epilogue_results/plain_matmul_bf16.csv`
-- `fig5_epilogue_results/plain_matmul_fp16.csv`
-- `fig5_epilogue_results/plain_matmul_fp32.csv`
-- `fig5_epilogue_results/*_overall_grid.png`
-- `fig5_epilogue_results/*_mn16.png`, `*_mn32.png`, `*_mn48.png`, `*_mn64.png`
+- `bench_results/epilogue_relu_bf16.csv`
+- `bench_results/plain_matmul_bf16.csv`
+- `bench_results/plain_matmul_fp16.csv`
+- `bench_results/plain_matmul_fp32.csv`
+- `bench_results/*_overall_grid.png`
+- `bench_results/*_mn16.png`, `*_mn32.png`, `*_mn48.png`, `*_mn64.png`
 
 ## Standalone Decompose-K ReLU Kernel
 
