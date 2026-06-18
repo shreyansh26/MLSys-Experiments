@@ -266,6 +266,7 @@ def _compiled_gemm(
     a_tensor,
     b_tensor,
     partials_tensor,
+    input_dtype: torch.dtype,
 ):
     key = (
         config.split_k,
@@ -274,15 +275,22 @@ def _compiled_gemm(
         config.block_k,
         config.num_warps,
         config.num_stages,
+        input_dtype,
         int(a_tensor.shape[0]),
         int(a_tensor.shape[1]),
         int(b_tensor.shape[0]),
     )
     compiled = _GEMM_CACHE.get(key)
     if compiled is None:
+        if input_dtype is torch.bfloat16:
+            ab_dtype = cutlass.BFloat16
+        elif input_dtype is torch.float16:
+            ab_dtype = cutlass.Float16
+        else:
+            raise TypeError(f"unsupported CuteDSL tensorop input dtype: {input_dtype}")
         atom_layout = _atom_layout(config.num_warps)
         gemm = _tensorop_gemm.TensorOpGemm(
-            cutlass.BFloat16,
+            ab_dtype,
             cutlass.Float32,
             cutlass.Float32,
             atom_layout,
@@ -309,6 +317,8 @@ def _compiled_vec4_reducer(
     if reducer is None:
         if output_dtype is torch.bfloat16:
             c_dtype = cute.BFloat16
+        elif output_dtype is torch.float16:
+            c_dtype = cute.Float16
         elif output_dtype is torch.float32:
             c_dtype = cute.Float32
         else:
@@ -356,15 +366,15 @@ def decompose_k_relu_out(
         raise ValueError("CuteDSL GEMM tile must exactly tile the output shape")
     if min(m, n) < 64 and (config.block_m > 16 or config.block_n > 16):
         raise ValueError("CuteDSL larger spatial tiles are only used for larger outputs")
-    if a.dtype is not torch.bfloat16 or b.dtype is not torch.bfloat16:
-        raise TypeError("CuteDSL split-K GEMM candidate currently supports BF16 inputs")
+    if a.dtype not in (torch.bfloat16, torch.float16) or b.dtype != a.dtype:
+        raise TypeError("CuteDSL split-K GEMM candidate supports BF16 or FP16 inputs")
     if partials.dtype is not torch.float32:
         raise TypeError("CuteDSL split-K GEMM candidate requires FP32 partials")
 
     a_tensor, b_tensor, partials_tensor = _make_split_views(
         a, b, partials, config.split_k
     )
-    gemm = _compiled_gemm(config, a_tensor, b_tensor, partials_tensor)
+    gemm = _compiled_gemm(config, a_tensor, b_tensor, partials_tensor, a.dtype)
     gemm(a_tensor, b_tensor, partials_tensor)
 
     reducer = _compiled_vec4_reducer(
