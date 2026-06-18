@@ -2,8 +2,10 @@
 
 import argparse
 import csv
+import importlib
 import os
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Callable
 
@@ -37,6 +39,12 @@ DEFAULT_MNS = [16, 32, 48, 64]
 DEFAULT_KS = [8192, 12288, 16384, 20480, 24576, 28672, 32768]
 _CUSTOM_MM_REGISTERED = False
 _CUSTOM_MM_RELU_REGISTERED = False
+CUTEDSL_MODULES = {
+    "epilogue-bf16": "kernels.cutedsl_splitk_gemm_candidate",
+    "matmul-bf16": "kernels.cutedsl_splitk_gemm_candidate",
+    "matmul-fp16": "kernels.cutedsl_splitk_gemm_candidate",
+    "matmul-fp32": "kernels.cutedsl_fp32_shared16_candidate",
+}
 
 
 @dataclass(frozen=True)
@@ -211,6 +219,129 @@ def bench_ms(fn: Callable[[], torch.Tensor], warmup: int, rep: int) -> float:
     return triton.testing.do_bench(fn, warmup=warmup, rep=rep, return_mode="median")
 
 
+@cache
+def load_cutedsl_module(module_name: str):
+    return importlib.import_module(module_name)
+
+
+def cutedsl_module_for_suite(suite: Suite):
+    module_name = CUTEDSL_MODULES.get(suite.name)
+    if module_name is None:
+        return None
+    return load_cutedsl_module(module_name)
+
+
+def cutedsl_partials_dtype(module, suite: Suite) -> torch.dtype:
+    if hasattr(module, "partials_dtype"):
+        return module.partials_dtype(suite.name, suite.dtype)
+    return torch.float32
+
+
+def best_cutedsl_plain_config(
+    module,
+    suite: Suite,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    ref: torch.Tensor,
+    split_limit: int,
+    warmup: int,
+    rep: int,
+    rtol: float,
+    atol: float,
+) -> tuple[float, KernelConfig]:
+    m, k = a.shape
+    n = b.shape[1]
+    splits = module.inductor_like_splits(m, n, k, split_limit)
+    if not splits:
+        raise ValueError(f"no valid CuteDSL split_k values for M={m}, N={n}, K={k}")
+
+    best = (float("inf"), None)
+    first_error = None
+    partials_dtype = cutedsl_partials_dtype(module, suite)
+    for config in module.candidate_configs(splits):
+        c = torch.empty_like(ref)
+        partials = torch.empty((config.split_k, m, n), device=a.device, dtype=partials_dtype)
+        try:
+            module.decompose_k_matmul_out(a, b, c, partials, config)
+            torch.cuda.synchronize()
+            torch.testing.assert_close(c, ref, rtol=rtol, atol=atol)
+            ms = bench_ms(
+                lambda: module.decompose_k_matmul_out(a, b, c, partials, config),
+                warmup,
+                rep,
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+        if ms < best[0]:
+            best = (ms, config)
+
+    if best[1] is None:
+        raise RuntimeError(
+            f"no CuteDSL configs completed for M={m}, N={n}, K={k}; "
+            f"first failure: {first_error}"
+        )
+    return best
+
+
+def best_cutedsl_epilogue_config(
+    module,
+    suite: Suite,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    ref: torch.Tensor,
+    split_limit: int,
+    warmup: int,
+    rep: int,
+    rtol: float,
+    atol: float,
+) -> tuple[float, float, KernelConfig]:
+    m, k = a.shape
+    n = b.shape[1]
+    splits = module.inductor_like_splits(m, n, k, split_limit)
+    if not splits:
+        raise ValueError(f"no valid CuteDSL split_k values for M={m}, N={n}, K={k}")
+
+    best = (float("inf"), float("inf"), None)
+    first_error = None
+    partials_dtype = cutedsl_partials_dtype(module, suite)
+    for config in module.candidate_configs(splits):
+        c = torch.empty_like(ref)
+        partials = torch.empty((config.split_k, m, n), device=a.device, dtype=partials_dtype)
+        try:
+            module.decompose_k_relu_out(a, b, c, partials, config, fuse_relu=True)
+            torch.cuda.synchronize()
+            torch.testing.assert_close(c, ref, rtol=rtol, atol=atol)
+            fused_ms = bench_ms(
+                lambda: module.decompose_k_relu_out(
+                    a, b, c, partials, config, fuse_relu=True
+                ),
+                warmup,
+                rep,
+            )
+            unfused_ms = bench_ms(
+                lambda: module.decompose_k_matmul_out(a, b, c, partials, config).relu_(),
+                warmup,
+                rep,
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+        if fused_ms < best[0]:
+            best = (fused_ms, unfused_ms, config)
+
+    if best[2] is None:
+        raise RuntimeError(
+            f"no CuteDSL configs completed for M={m}, N={n}, K={k}; "
+            f"first failure: {first_error}"
+        )
+    return best
+
+
 def best_decompose_k_plain_config(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -308,21 +439,33 @@ def best_decompose_k_epilogue_config(
     return best
 
 
-def line_specs(suite: Suite) -> list[tuple[str, str]]:
+def line_specs(suite: Suite, include_cutedsl: bool) -> list[tuple[str, str]]:
     if suite.epilogue:
-        return [
+        specs = [
             ("eager_ms", "torch.mm + relu"),
             ("compiled_ms", "compiled torch.mm + relu"),
             ("custom_op_mm_relu_ms", "custom op autotuned mm+relu"),
             ("decompose_k_unfused_ms", "decomposeK + relu"),
             ("decompose_k_fused_ms", "decomposeK fused relu"),
         ]
-    return [
+        if include_cutedsl and suite.name in CUTEDSL_MODULES:
+            specs.extend(
+                [
+                    ("cutedsl_unfused_ms", "CuteDSL + relu"),
+                    ("cutedsl_fused_ms", "CuteDSL fused relu"),
+                ]
+            )
+        return specs
+
+    specs = [
         ("eager_ms", "torch.mm"),
         ("compiled_ms", "compiled torch.mm"),
         ("custom_op_mm_ms", "custom op autotuned mm"),
         ("decompose_k_ms", "decomposeK"),
     ]
+    if include_cutedsl and suite.name in CUTEDSL_MODULES:
+        specs.append(("cutedsl_ms", "CuteDSL"))
+    return specs
 
 
 def plot_one(
@@ -331,6 +474,7 @@ def plot_one(
     out_dir: Path,
     name_suffix: str,
     title_suffix: str,
+    include_cutedsl: bool,
 ) -> None:
     import matplotlib.pyplot as plt
 
@@ -339,7 +483,7 @@ def plot_one(
     x = list(range(len(labels)))
 
     fig, ax = plt.subplots(figsize=(18, 6) if not title_suffix else (12, 5))
-    for key, label in line_specs(suite):
+    for key, label in line_specs(suite, include_cutedsl):
         ax.plot(x, [float(row[key]) for row in rows], marker="o", label=label)
 
     if not title_suffix:
@@ -371,15 +515,31 @@ def plot_one(
     plt.close(fig)
 
 
-def plot_results(rows: list[dict[str, object]], suite: Suite, out_dir: Path) -> None:
-    plot_one(rows, suite, out_dir, "_overall_grid", ", Overall Comparison Grid")
+def plot_results(
+    rows: list[dict[str, object]],
+    suite: Suite,
+    out_dir: Path,
+    include_cutedsl: bool,
+) -> None:
+    plot_one(rows, suite, out_dir, "_overall_grid", ", Overall Comparison Grid", include_cutedsl)
 
     for mn in sorted({int(row["m"]) for row in rows}):
         subset = [row for row in rows if int(row["m"]) == mn]
-        plot_one(subset, suite, out_dir, f"_mn{mn}", f", M=N={mn}")
+        plot_one(subset, suite, out_dir, f"_mn{mn}", f", M=N={mn}", include_cutedsl)
 
 
-def csv_fieldnames(suite: Suite) -> list[str]:
+def cutedsl_config_fieldnames() -> list[str]:
+    return [
+        "cutedsl_split_k",
+        "cutedsl_block_m",
+        "cutedsl_block_n",
+        "cutedsl_block_k",
+        "cutedsl_num_warps",
+        "cutedsl_num_stages",
+    ]
+
+
+def csv_fieldnames(suite: Suite, include_cutedsl: bool) -> list[str]:
     base = ["suite", "m", "n", "k", "dtype"]
     custom_config = [
         "custom_op_autotune_name",
@@ -393,34 +553,75 @@ def csv_fieldnames(suite: Suite) -> list[str]:
         "standalone_block_n",
         "standalone_block_k",
     ]
+    has_cutedsl = include_cutedsl and suite.name in CUTEDSL_MODULES
     if suite.epilogue:
-        return [
+        timings = [
             *base,
             "eager_ms",
             "compiled_ms",
             "custom_op_mm_relu_ms",
             "decompose_k_unfused_ms",
             "decompose_k_fused_ms",
+        ]
+        if has_cutedsl:
+            timings.extend(["cutedsl_unfused_ms", "cutedsl_fused_ms"])
+
+        speedups = [
             "custom_op_speedup_vs_eager",
             "custom_op_speedup_vs_compiled",
             "decompose_k_fused_speedup_vs_eager",
             "decompose_k_fused_speedup_vs_compiled",
             "decompose_k_fused_vs_unfused_speedup",
+        ]
+        if has_cutedsl:
+            speedups.extend(
+                [
+                    "cutedsl_fused_speedup_vs_eager",
+                    "cutedsl_fused_speedup_vs_compiled",
+                    "cutedsl_fused_vs_unfused_speedup",
+                    "decompose_k_fused_over_cutedsl_fused_speedup",
+                ]
+            )
+
+        return [
+            *timings,
+            *speedups,
             *custom_config,
             *standalone_config,
+            *(cutedsl_config_fieldnames() if has_cutedsl else []),
         ]
-    return [
+
+    timings = [
         *base,
         "eager_ms",
         "compiled_ms",
         "custom_op_mm_ms",
         "decompose_k_ms",
+    ]
+    if has_cutedsl:
+        timings.append("cutedsl_ms")
+
+    speedups = [
         "custom_op_speedup_vs_eager",
         "custom_op_speedup_vs_compiled",
         "decompose_k_speedup_vs_eager",
         "decompose_k_speedup_vs_compiled",
+    ]
+    if has_cutedsl:
+        speedups.extend(
+            [
+                "cutedsl_speedup_vs_eager",
+                "cutedsl_speedup_vs_compiled",
+                "decompose_k_over_cutedsl_speedup",
+            ]
+        )
+
+    return [
+        *timings,
+        *speedups,
         *custom_config,
         *standalone_config,
+        *(cutedsl_config_fieldnames() if has_cutedsl else []),
     ]
 
 
@@ -435,6 +636,7 @@ def run_suite(
     rtol: float | None,
     atol: float | None,
     out_dir: Path,
+    include_cutedsl: bool,
 ) -> None:
     target = mm_relu if suite.epilogue else mm_only
     torch.set_float32_matmul_precision("highest" if suite.dtype == torch.float32 else "high")
@@ -444,10 +646,13 @@ def run_suite(
         ensure_custom_mm_registered()
     rtol = suite.rtol if rtol is None else rtol
     atol = suite.atol if atol is None else atol
+    cutedsl_module = cutedsl_module_for_suite(suite) if include_cutedsl else None
 
     print(f"\n== {suite.name} ==", flush=True)
     print(f"dtype={suite.dtype} compile_mode={compile_mode}", flush=True)
     print(f"assert_close rtol={rtol} atol={atol}", flush=True)
+    if cutedsl_module is not None:
+        print(f"cutedsl_module={CUTEDSL_MODULES[suite.name]}", flush=True)
 
     rows: list[dict[str, object]] = []
     for mn in mns:
@@ -508,10 +713,49 @@ def run_suite(
                         "decompose_k_fused_vs_unfused_speedup": unfused_ms / fused_ms,
                     }
                 )
+                cutedsl_metric = ""
+                cutedsl_config = None
+                if cutedsl_module is not None:
+                    cutedsl_fused_ms, cutedsl_unfused_ms, cutedsl_config = (
+                        best_cutedsl_epilogue_config(
+                            cutedsl_module,
+                            suite,
+                            a,
+                            b,
+                            ref,
+                            split_limit,
+                            warmup,
+                            rep,
+                            rtol,
+                            atol,
+                        )
+                    )
+                    row.update(
+                        {
+                            "cutedsl_unfused_ms": cutedsl_unfused_ms,
+                            "cutedsl_fused_ms": cutedsl_fused_ms,
+                            "cutedsl_fused_speedup_vs_eager": eager_ms / cutedsl_fused_ms,
+                            "cutedsl_fused_speedup_vs_compiled": (
+                                compiled_ms / cutedsl_fused_ms
+                            ),
+                            "cutedsl_fused_vs_unfused_speedup": (
+                                cutedsl_unfused_ms / cutedsl_fused_ms
+                            ),
+                            "decompose_k_fused_over_cutedsl_fused_speedup": (
+                                fused_ms / cutedsl_fused_ms
+                            ),
+                        }
+                    )
+                    cutedsl_metric = (
+                        f" cutedsl_unfused={cutedsl_unfused_ms:.4f}ms "
+                        f"cutedsl_fused={cutedsl_fused_ms:.4f}ms "
+                        f"triton/cutedsl={fused_ms / cutedsl_fused_ms:.2f}x"
+                    )
                 metric = (
                     f"custom_op={custom_op_ms:.4f}ms "
                     f"unfused={unfused_ms:.4f}ms fused={fused_ms:.4f}ms "
                     f"speedup_vs_compiled={compiled_ms / fused_ms:.2f}x"
+                    f"{cutedsl_metric}"
                 )
             else:
                 custom_compiled_target, custom_out, custom_winner = (
@@ -541,10 +785,38 @@ def run_suite(
                         "decompose_k_speedup_vs_compiled": compiled_ms / decompose_ms,
                     }
                 )
+                cutedsl_metric = ""
+                cutedsl_config = None
+                if cutedsl_module is not None:
+                    cutedsl_ms, cutedsl_config = best_cutedsl_plain_config(
+                        cutedsl_module,
+                        suite,
+                        a,
+                        b,
+                        ref,
+                        split_limit,
+                        warmup,
+                        rep,
+                        rtol,
+                        atol,
+                    )
+                    row.update(
+                        {
+                            "cutedsl_ms": cutedsl_ms,
+                            "cutedsl_speedup_vs_eager": eager_ms / cutedsl_ms,
+                            "cutedsl_speedup_vs_compiled": compiled_ms / cutedsl_ms,
+                            "decompose_k_over_cutedsl_speedup": decompose_ms / cutedsl_ms,
+                        }
+                    )
+                    cutedsl_metric = (
+                        f" cutedsl={cutedsl_ms:.4f}ms "
+                        f"triton/cutedsl={decompose_ms / cutedsl_ms:.2f}x"
+                    )
                 metric = (
                     f"custom_op={custom_op_ms:.4f}ms "
                     f"decomposeK={decompose_ms:.4f}ms "
                     f"speedup_vs_compiled={compiled_ms / decompose_ms:.2f}x"
+                    f"{cutedsl_metric}"
                 )
 
             row.update(
@@ -561,22 +833,46 @@ def run_suite(
                     "standalone_block_k": config.block_k,
                 }
             )
+            if cutedsl_config is not None:
+                row.update(
+                    {
+                        "cutedsl_split_k": cutedsl_config.split_k,
+                        "cutedsl_block_m": cutedsl_config.block_m,
+                        "cutedsl_block_n": cutedsl_config.block_n,
+                        "cutedsl_block_k": cutedsl_config.block_k,
+                        "cutedsl_num_warps": cutedsl_config.num_warps,
+                        "cutedsl_num_stages": cutedsl_config.num_stages,
+                    }
+                )
             rows.append(row)
+            cutedsl_config_text = ""
+            if cutedsl_config is not None:
+                cutedsl_config_text = (
+                    f" cutedsl=split{cutedsl_config.split_k}/"
+                    f"bm{cutedsl_config.block_m}/bn{cutedsl_config.block_n}/"
+                    f"bk{cutedsl_config.block_k}/w{cutedsl_config.num_warps}/"
+                    f"s{cutedsl_config.num_stages}"
+                )
             print(
                 f"(M=N={mn}, K={k}) eager={eager_ms:.4f}ms "
                 f"compiled={compiled_ms:.4f}ms {metric} "
                 f"custom={custom_winner.impl}/split{custom_winner.k_splits} "
-                f"standalone=split{config.split_k}/bm{config.block_m}/bn{config.block_n}/bk{config.block_k}",
+                f"standalone=split{config.split_k}/bm{config.block_m}/"
+                f"bn{config.block_n}/bk{config.block_k}"
+                f"{cutedsl_config_text}",
                 flush=True,
             )
 
     csv_path = out_dir / suite.csv_name
     with csv_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_fieldnames(suite))
+        writer = csv.DictWriter(
+            f,
+            fieldnames=csv_fieldnames(suite, cutedsl_module is not None),
+        )
         writer.writeheader()
         writer.writerows(rows)
 
-    plot_results(rows, suite, out_dir)
+    plot_results(rows, suite, out_dir, cutedsl_module is not None)
     print(f"wrote {csv_path}", flush=True)
     print(f"wrote plots for {suite.name} under {out_dir}", flush=True)
 
@@ -594,6 +890,11 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=Path("bench_results"))
     parser.add_argument("--rtol", type=float)
     parser.add_argument("--atol", type=float)
+    parser.add_argument(
+        "--no-cutedsl",
+        action="store_true",
+        help="skip CuteDSL kernels and keep the historical benchmark columns/plots",
+    )
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -619,6 +920,7 @@ def main() -> None:
             rtol=args.rtol,
             atol=args.atol,
             out_dir=args.out_dir,
+            include_cutedsl=not args.no_cutedsl,
         )
 
     if os.environ.get("DECOMPOSE_K_FORCE_EXIT", "1") == "1":
