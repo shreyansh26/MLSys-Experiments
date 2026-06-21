@@ -3,6 +3,9 @@
 Standalone Triton and PyTorch Inductor experiments for Decompose-K matmul,
 custom-op autotuning, and ReLU epilogue fusion.
 
+The saved benchmark CSVs and plots in this README were collected on an NVIDIA
+H100 GPU.
+
 ## Table Of Contents
 
 - [Environment](#environment)
