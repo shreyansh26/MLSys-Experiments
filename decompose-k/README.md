@@ -642,15 +642,26 @@ uv run python -u bench_candidate_decompose_k.py \
   --out-csv bench_results_v2/optimized_matmul_bf16_rep50_full.csv
 ```
 
-The resulting BF16 comparison was:
+The saved BF16 CSVs compare the custom-op autotuned timing against the
+standalone Triton timing: `custom_op_mm_relu_ms / decompose_k_fused_ms` for the
+epilogue suite, and `custom_op_mm_ms / decompose_k_ms` for the plain matmul
+suite. Values above `1.0x` mean the standalone Triton path is faster than the
+custom-op path.
 
-- `epilogue-bf16`: `28/28` wins versus saved custom-op timings, with
-  `custom_over_candidate_speedup` min/median/max of `1.057x / 1.094x / 1.170x`.
-- `matmul-bf16`: `28/28` wins versus saved custom-op timings, with
-  `custom_over_candidate_speedup` min/median/max of `1.005x / 1.022x / 1.105x`.
+From `bench_results` (original standalone Triton kernel):
 
-The narrowest plain-matmul wins are close to benchmark noise, so the strict
-`warmup=10, rep=50` CSVs are the preferred evidence for those rows.
+- `epilogue-bf16`: `0/28` wins versus custom-op timings, with
+  min/median/max of `0.874x / 0.917x / 0.982x`.
+- `matmul-bf16`: `0/28` wins versus custom-op timings, with
+  min/median/max of `0.886x / 0.920x / 0.956x`.
+
+From `bench_results_v2` (optimized standalone Triton kernel):
+
+- `epilogue-bf16`: `26/28` wins and `1` tie versus custom-op timings, with
+  min/median/max of `0.990x / 1.026x / 1.080x`.
+- `matmul-bf16`: `24/28` wins and `2` ties versus custom-op timings, with
+  min/median/max of `0.997x / 1.022x / 1.052x`.
+
 
 ## Inductor Custom-Op Autotuning Exploration
 
