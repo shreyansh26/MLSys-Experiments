@@ -846,7 +846,7 @@ TORCH_LOGS=output_code uv run python inductor_mm_relu_epilogue_poc.py \
 
 Expected large-K result:
 
-- Inductor selects the Decompose-K matmul path.
+- Inductor selects the Decompose-K matmul path (now that it is in nightly).
 - In the saved log, look for:
   - `decompose_k_mm_64_split_5`
   - `extern_kernels.bmm_dtype`
