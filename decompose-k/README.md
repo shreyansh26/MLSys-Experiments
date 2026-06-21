@@ -84,6 +84,93 @@ PyTorch version string.
 
 </details>
 
+## What Is Decompose-K?
+
+Decompose-K is a matmul strategy for shapes where the reduction dimension is
+large but the output tile is small. For a normal GEMM:
+
+```text
+C[M, N] = A[M, K] @ B[K, N]
+```
+
+Decompose-K splits the K dimension into `S` independent chunks, computes `S`
+partial GEMMs, then reduces those partial outputs:
+
+```text
+A[M, K] @ B[K, N]
+  -> partials[S, M, N]
+  -> sum(partials, dim=0)
+```
+
+This creates extra parallelism for skinny, K-dominant matmuls where a normal
+`M x N` output grid may not expose enough work to fill the GPU.
+
+The minimal PyTorch version in `gemm.py` is:
+
+```python
+def decomposeK(a, b, k_splits):
+    m = a.shape[0]
+    n = b.shape[1]
+    k = a.shape[1]
+
+    assert k == b.shape[0], "Incompatible dimensions"
+    assert k % k_splits == 0, "k must be divisible by k_splits"
+
+    k_parts = k // k_splits
+
+    # [m, k_splits, k_parts] -> [k_splits, m, k_parts]
+    a_reshaped = a.reshape(m, k_splits, k_parts).permute(1, 0, 2)
+    b_reshaped = b.reshape(k_splits, k_parts, n)
+
+    result = torch.bmm(a_reshaped, b_reshaped, out_dtype=torch.float32)
+    reduced_result = result.sum(dim=0)
+    return reduced_result.to(a.dtype)
+```
+
+`custom_op_autotune_relu_dispatch.py` uses the same reshape-to-batched-GEMM idea
+and also defines a `torch.mm + relu` variant where ReLU is applied after the
+split reduction. Those implementations are registered as custom-op autotune
+candidates. Inductor sees the current fake tensor shape, enumerates valid
+`k_splits`, benchmarks plain `mm` or `mm+relu` against the Decompose-K
+candidates, and lowers the fastest candidate:
+
+```python
+K_SPLITS = (2, 4, 8, 16, 32, 64, 128, 256)
+
+
+def generate_mm_relu_configs(
+    fake_tensors: dict[str, torch.Tensor],
+) -> list[CustomOpConfig]:
+    k = int(fake_tensors["a"].shape[1])
+    splits = [k_splits for k_splits in K_SPLITS if k % k_splits == 0]
+
+    configs = [CustomOpConfig(mm_relu_impl)]
+    configs.extend(
+        CustomOpConfig(decompose_k_relu_impl, k_splits=k_splits)
+        for k_splits in splits
+    )
+    return configs
+```
+
+This is most useful when:
+
+- `K` is very large and `M`/`N` are small, for example `M=N=16..64` with
+  `K=8192..32768`.
+- The workload is latency-sensitive and single-shape performance matters more
+  than amortizing a generic GEMM implementation.
+- The leading dimension is dynamic and different ranges want different kernels.
+  One example is a DeepSeek V3 MoE router GEMM: `[T, 7168] @ [7168, 256]`,
+  where decode has small dynamic token counts (`T=1..256`) and prefill has
+  larger sizes.
+- A fused epilogue such as ReLU can be applied after the split reduction,
+  avoiding a separate pointwise pass in the standalone kernel.
+
+It is usually less attractive when `M` and `N` are already large enough to give
+the GPU plenty of output-tile parallelism, when `K` is small, when `K` has poor
+divisibility for the candidate split counts, or when the extra
+`partials[S, M, N]` buffer and reduction cost dominate.
+
+
 ## ReLU Epilogue And Large-K Benchmarks
 
 `bench_decompose_k.py` runs a small-M/N, large-K shape grid:
@@ -94,25 +181,40 @@ PyTorch version string.
 It supports four benchmark suites:
 
 - `epilogue-bf16`: BF16 `torch.mm + relu`, compiled `torch.mm + relu`,
-  custom-op autotuned `mm+relu`, Decompose-K + separate ReLU, and Decompose-K
-  fused ReLU.
+  custom-op autotuned `mm+relu`, standalone Triton Decompose-K + separate ReLU,
+  and standalone Triton Decompose-K fused ReLU.
 - `matmul-bf16`: BF16 plain `torch.mm`, compiled `torch.mm`, custom-op
-  autotuned `mm`, and standalone Decompose-K.
+  autotuned `mm`, and standalone Triton Decompose-K.
 - `matmul-fp16`: FP16 plain `torch.mm`, compiled `torch.mm`, custom-op
-  autotuned `mm`, and standalone Decompose-K.
+  autotuned `mm`, and standalone Triton Decompose-K.
 - `matmul-fp32`: FP32 plain `torch.mm`, compiled `torch.mm`, custom-op
-  autotuned `mm`, and standalone Decompose-K.
+  autotuned `mm`, and standalone Triton Decompose-K.
+
+The standalone Triton path has two implementations in this folder: the baseline
+`kernels/decompose_k_triton_kernel.py` and the optimized
+`kernels/decompose_k_triton_kernel_optimized.py`. The current benchmark harness
+imports the optimized kernel.
+
+Saved result directories use the same CSV schema but different standalone Triton
+implementations:
+
+- `bench_results`: original standalone Triton kernel run.
+- `bench_results_v2`: optimized standalone Triton kernel run.
+
+In both directories, the `standalone_*` CSV columns describe the Triton config
+that produced the `decompose_k_*` timings; they do not refer to Inductor's
+custom-op autotune winner.
 
 Run all suites:
 
 ```bash
 uv run python -u bench_decompose_k.py \
   --suites all \
-  --out-dir bench_results \
-  2>&1 | tee bench_results.log
+  --out-dir bench_results_v2 \
+  2>&1 | tee bench_results_v2.log
 ```
 
-The default `--compile-mode` is `max-autotune-no-cudagraphs`. A quick GPU3
+The default `--compile-mode` is `max-autotune-no-cudagraphs`. A quick
 comparison on representative benchmark shapes picked it over `max-autotune` for
 all tested BF16 epilogue, BF16 matmul, and FP32 matmul cases.
 
@@ -129,13 +231,20 @@ Important naming distinction:
   Inductor paths, but through the registered custom-op autotuning API. Inductor
   internally chooses among the candidates returned by `generate_custom_mm_configs`
   or `generate_mm_relu_configs`, then the benchmark measures the compiled result.
-- `decompose_k_unfused_ms` and `decompose_k_fused_ms` are standalone handwritten
-  Triton Decompose-K paths from `kernels/decompose_k_triton_kernel.py`.
+- `decompose_k_ms` is the standalone handwritten Triton Decompose-K timing for
+  the plain matmul suites.
+- `decompose_k_unfused_ms` and `decompose_k_fused_ms` are the standalone
+  handwritten Triton Decompose-K timings for the ReLU epilogue suite.
+- The CSV schema does not have separate `baseline_*` or `optimized_*` timing
+  columns. `bench_results` uses the original standalone Triton kernel, and
+  `bench_results_v2` uses the optimized standalone Triton kernel, but both
+  directories keep the same `decompose_k_*` and `standalone_*` column names.
 - `decompose_k_fused_vs_unfused_speedup` is the standalone ReLU epilogue fusion
   benefit: `decompose_k_unfused_ms / decompose_k_fused_ms`. It compares the same
   standalone Decompose-K config with ReLU applied as a separate in-place op
   versus ReLU fused into the reduction/store epilogue.
-- `decompose_k_unfused_ms` is not expected to exactly match compiled
+- The standalone `decompose_k_*` timings are not expected to exactly match
+  compiled `torch.mm` or compiled
   `torch.mm + relu`, even when Inductor also chooses a Decompose-K lowering.
   Inductor's generated path can use `extern_kernels.bmm_dtype` plus generated
   Triton reduction and pointwise ReLU kernels, while the benchmark's Decompose-K
@@ -145,13 +254,15 @@ CSV columns are grouped as:
 
 1. Shape and dtype metadata.
 2. Timing columns, such as `eager_ms`, `compiled_ms`, `custom_op_mm_ms` or
-   `custom_op_mm_relu_ms`, and the standalone Decompose-K timing columns.
+   `custom_op_mm_relu_ms`, and the standalone Triton Decompose-K timing columns.
 3. Speedup columns. Ratios are always `baseline_ms / implementation_ms`, so
    values above `1.0` mean the implementation is faster than the named baseline.
 4. Config columns. `custom_op_*` columns describe the Inductor custom-op
    autotune winner captured during compile, while `standalone_*` columns
    describe the handwritten Triton config chosen by the explicit
-   `candidate_configs(...)` search in `bench_decompose_k.py`.
+   `candidate_configs(...)` search. `standalone_*` means "standalone Triton
+   config" in both `bench_results` and `bench_results_v2`; it does not mean the
+   original/baseline Triton module specifically.
 
 ### Custom-Op Autotune Flow
 
@@ -199,9 +310,12 @@ generate_*_configs
 ```
 
 This is separate from the standalone `decompose_k_ms`,
-`decompose_k_unfused_ms`, and `decompose_k_fused_ms` columns. Those standalone
-columns are chosen by explicit Python loops over `candidate_configs(...)` in
-`bench_decompose_k.py`, not by Inductor's custom-op autotuner.
+`decompose_k_unfused_ms`, and `decompose_k_fused_ms` columns. Those
+`decompose_k_*` columns are chosen by explicit Python loops over
+`candidate_configs(...)` in `bench_decompose_k.py`, not by Inductor's custom-op
+autotuner. The column names are the same in `bench_results` and
+`bench_results_v2`: `bench_results` is the original Triton run, while
+`bench_results_v2` is the optimized Triton run.
 
 The standalone config columns are:
 
@@ -211,7 +325,8 @@ The standalone config columns are:
 - `standalone_block_k`
 
 Those are handwritten Triton kernel parameters, not the Inductor custom-op
-winner.
+winner. They use the `standalone_*` prefix in both result directories because
+they describe standalone Triton kernel configs.
 
 ### Dynamo Recompile Limit
 
@@ -265,10 +380,10 @@ uv run python -u bench_decompose_k.py \
   --out-dir fig5_epilogue_smoke
 ```
 
-Quick GPU3 compile-mode comparison:
+Quick compile-mode comparison:
 
 ```bash
-CUDA_VISIBLE_DEVICES=3 uv run python - <<'PY'
+uv run python - <<'PY'
 import torch
 import triton
 
@@ -299,10 +414,10 @@ for case_name, dtype, fn in cases:
 PY
 ```
 
-Rerun only the real-FP32 matmul suite on GPU3:
+Rerun only the real-FP32 matmul suite:
 
 ```bash
-CUDA_VISIBLE_DEVICES=3 DECOMPOSE_K_FORCE_EXIT=1 \
+DECOMPOSE_K_FORCE_EXIT=1 \
   uv run python -u bench_decompose_k.py \
   --suites matmul-fp32 \
   --out-dir fp32_matmul_rerun
@@ -505,24 +620,26 @@ split counts also map naturally to the vectorized reduction.
 
 ### Final BF16 Results
 
-The strict validation runs benchmark the optimized Triton candidate against the
-saved custom-op timings in `bench_results`, without rerunning custom-op
-autotune:
+The strict validation runs benchmark the optimized Triton candidate against
+saved custom-op timings without rerunning custom-op autotune. For the optimized
+standalone Triton result directory, see `bench_results_v2`:
 
 ```bash
-CUDA_VISIBLE_DEVICES=5 uv run python -u bench_candidate_decompose_k.py \
+uv run python -u bench_candidate_decompose_k.py \
   --module kernels.decompose_k_triton_kernel_optimized \
+  --baseline-dir bench_results_v2 \
   --suites epilogue-bf16 \
   --warmup 10 \
   --rep 50 \
-  --out-csv bench_results/optimized_epilogue_bf16_rep50_full.csv
+  --out-csv bench_results_v2/optimized_epilogue_bf16_rep50_full.csv
 
-CUDA_VISIBLE_DEVICES=5 uv run python -u bench_candidate_decompose_k.py \
+uv run python -u bench_candidate_decompose_k.py \
   --module kernels.decompose_k_triton_kernel_optimized \
+  --baseline-dir bench_results_v2 \
   --suites matmul-bf16 \
   --warmup 10 \
   --rep 50 \
-  --out-csv bench_results/optimized_matmul_bf16_rep50_full.csv
+  --out-csv bench_results_v2/optimized_matmul_bf16_rep50_full.csv
 ```
 
 The resulting BF16 comparison was:
@@ -709,11 +826,4 @@ TORCH_LOGS=output_code DECOMPOSE_K_FORCE_EXIT=1 \
   --mode max-autotune \
   --dynamic \
   2>&1 | tee custom_op_autotune_relu_dispatch_k7168_output_code.log
-```
-
-Useful things to look for in the generated code:
-
-```bash
-grep -n "torch.cond\\|bmm_dtype\\|triton_poi_fused_relu\\|CustomOp decompose_k_impl" \
-  custom_op_autotune_relu_dispatch_k7168_output_code.log
 ```
