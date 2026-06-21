@@ -312,7 +312,7 @@ def main() -> None:
             lambda: compiled_relu_mm(a, b),
             flops,
         )
-        print(f"T={t}: compiled/eager={compiled_ms / eager_ms:.2f}x latency ratio", flush=True)
+        print(f"T={t}: compiled speedup vs eager={eager_ms / compiled_ms:.2f}x", flush=True)
 
     sys.stdout.flush()
     sys.stderr.flush()
