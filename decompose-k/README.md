@@ -357,15 +357,15 @@ Run one suite:
 ```bash
 uv run python -u bench_decompose_k.py \
   --suites epilogue-bf16 \
-  --out-dir bench_results
+  --out-dir bench_results_v2
 
 uv run python -u bench_decompose_k.py \
   --suites matmul-bf16 \
-  --out-dir bench_results
+  --out-dir bench_results_v2
 
 uv run python -u bench_decompose_k.py \
   --suites matmul-fp32 \
-  --out-dir bench_results
+  --out-dir bench_results_v2
 ```
 
 Quick smoke test:
@@ -432,14 +432,42 @@ Expected FP32 rerun outputs:
 - `fp32_matmul_rerun/plain_matmul_fp32_mn48.png`
 - `fp32_matmul_rerun/plain_matmul_fp32_mn64.png`
 
-Expected outputs:
+## Saved Benchmark Plots
 
-- `bench_results/epilogue_relu_bf16.csv`
-- `bench_results/plain_matmul_bf16.csv`
-- `bench_results/plain_matmul_fp16.csv`
-- `bench_results/plain_matmul_fp32.csv`
-- `bench_results/*_overall_grid.png`
-- `bench_results/*_mn16.png`, `*_mn32.png`, `*_mn48.png`, `*_mn64.png`
+The plots below are generated from the saved CSVs. `bench_results` is the
+original standalone Triton run, while `bench_results_v2` is the optimized
+standalone Triton run. Each directory also contains per-`M=N` plots named
+`*_mn16.png`, `*_mn32.png`, `*_mn48.png`, and `*_mn64.png`.
+
+### Original Standalone Triton (`bench_results`)
+
+![Original standalone Triton, BF16 ReLU epilogue](bench_results/epilogue_relu_bf16_overall_grid.png)
+
+![Original standalone Triton, BF16 plain matmul](bench_results/plain_matmul_bf16_overall_grid.png)
+
+<details>
+<summary>Original FP16/FP32 plots</summary>
+
+![Original standalone Triton, FP16 plain matmul](bench_results/plain_matmul_fp16_overall_grid.png)
+
+![Original standalone Triton, FP32 plain matmul](bench_results/plain_matmul_fp32_overall_grid.png)
+
+</details>
+
+### Optimized Standalone Triton (`bench_results_v2`)
+
+![Optimized standalone Triton, BF16 ReLU epilogue](bench_results_v2/epilogue_relu_bf16_overall_grid.png)
+
+![Optimized standalone Triton, BF16 plain matmul](bench_results_v2/plain_matmul_bf16_overall_grid.png)
+
+<details>
+<summary>Optimized FP16/FP32 plots</summary>
+
+![Optimized standalone Triton, FP16 plain matmul](bench_results_v2/plain_matmul_fp16_overall_grid.png)
+
+![Optimized standalone Triton, FP32 plain matmul](bench_results_v2/plain_matmul_fp32_overall_grid.png)
+
+</details>
 
 ## Standalone Decompose-K ReLU Kernel
 
