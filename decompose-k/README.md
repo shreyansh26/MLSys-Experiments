@@ -5,13 +5,84 @@ custom-op autotuning, and ReLU epilogue fusion.
 
 ## Environment
 
-Use the project virtual environment:
+<details>
+<summary>Fresh clone setup with uv</summary>
+
+This folder is a self-contained [uv](https://docs.astral.sh/uv/) project. A
+fresh checkout should be set up from the project files in this directory:
+
+- `pyproject.toml`: declares Python and package requirements.
+- `uv.lock`: pins the exact package versions.
+- `.python-version`: selects Python 3.12.
+
+Do not copy an existing `.venv/` from another machine. Recreate it with `uv`.
+
+### Prerequisites
+
+- Linux with an NVIDIA GPU and a driver that can run CUDA 12.8 wheels (`cu128`).
+  `nvidia-smi` should report CUDA 12.8 or newer.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
+- Network access to PyPI and the PyTorch nightly CUDA 12.8 wheel index:
+  `https://download.pytorch.org/whl/nightly/cu128`.
+
+### Fresh Clone Setup
 
 ```bash
-.venv/bin/python --version
+git clone <repo-url>
+cd <repo>/misc_experiments/decompose-k
+
+# Optional sanity check: these files should all exist in this folder.
+ls pyproject.toml uv.lock .python-version
 ```
 
-Most scripts require CUDA.
+Install exactly what the lockfile specifies:
+
+```bash
+uv sync --frozen
+```
+
+What this does:
+
+- Creates `.venv/` with Python 3.12 if it does not exist.
+- Installs the exact versions from `uv.lock`.
+- Pulls `torch` and `triton` from the PyTorch nightly CUDA 12.8 index configured
+  in `pyproject.toml` (`https://download.pytorch.org/whl/nightly/cu128`).
+- Allows prerelease/nightly wheels via `[tool.uv] prerelease = "allow"`.
+
+If `uv` cannot find Python 3.12 locally, install it through `uv` and retry:
+
+```bash
+uv python install 3.12
+uv sync --frozen
+```
+
+At the time the lockfile was generated, that resolved to roughly:
+
+- `torch==2.12.0.dev20260408+cu128`
+- `triton==3.7.0+git282c8251`
+- `numpy>=2.2.6`
+
+Use `uv sync --frozen` for a reproducible clone. Use plain `uv sync` only if you
+intend to let `uv` update the lockfile metadata.
+
+To refresh nightly PyTorch/Triton pins later:
+
+```bash
+uv lock --upgrade-package torch --upgrade-package triton
+uv sync
+```
+
+### Verify the setup
+
+```bash
+uv run python --version
+uv run python -c "import torch, triton; print(torch.__version__); print(triton.__version__); print('cuda', torch.cuda.is_available())"
+```
+
+You should see Python 3.12.x, CUDA available as `True`, and `+cu128` in the
+PyTorch version string.
+
+</details>
 
 ## ReLU Epilogue And Large-K Benchmarks
 
@@ -35,7 +106,7 @@ It supports four benchmark suites:
 Run all suites:
 
 ```bash
-.venv/bin/python -u bench_decompose_k.py \
+uv run python -u bench_decompose_k.py \
   --suites all \
   --out-dir bench_results \
   2>&1 | tee bench_results.log
@@ -169,15 +240,15 @@ before compiling the next measured callable.
 Run one suite:
 
 ```bash
-.venv/bin/python -u bench_decompose_k.py \
+uv run python -u bench_decompose_k.py \
   --suites epilogue-bf16 \
   --out-dir bench_results
 
-.venv/bin/python -u bench_decompose_k.py \
+uv run python -u bench_decompose_k.py \
   --suites matmul-bf16 \
   --out-dir bench_results
 
-.venv/bin/python -u bench_decompose_k.py \
+uv run python -u bench_decompose_k.py \
   --suites matmul-fp32 \
   --out-dir bench_results
 ```
@@ -185,7 +256,7 @@ Run one suite:
 Quick smoke test:
 
 ```bash
-.venv/bin/python -u bench_decompose_k.py \
+uv run python -u bench_decompose_k.py \
   --suites all \
   --mns 16 \
   --ks 256 \
@@ -197,7 +268,7 @@ Quick smoke test:
 Quick GPU3 compile-mode comparison:
 
 ```bash
-CUDA_VISIBLE_DEVICES=3 .venv/bin/python - <<'PY'
+CUDA_VISIBLE_DEVICES=3 uv run python - <<'PY'
 import torch
 import triton
 
@@ -232,7 +303,7 @@ Rerun only the real-FP32 matmul suite on GPU3:
 
 ```bash
 CUDA_VISIBLE_DEVICES=3 DECOMPOSE_K_FORCE_EXIT=1 \
-  .venv/bin/python -u bench_decompose_k.py \
+  uv run python -u bench_decompose_k.py \
   --suites matmul-fp32 \
   --out-dir fp32_matmul_rerun
 ```
@@ -261,13 +332,13 @@ Expected outputs:
 partial matmul and reduction/epilogue kernels. It also has a small usage test.
 
 ```bash
-.venv/bin/python -m kernels.decompose_k_triton_kernel --warmup 5 --rep 20
+uv run python -m kernels.decompose_k_triton_kernel --warmup 5 --rep 20
 ```
 
 Custom shape:
 
 ```bash
-.venv/bin/python -m kernels.decompose_k_triton_kernel \
+uv run python -m kernels.decompose_k_triton_kernel \
   --m 16 \
   --n 16 \
   --k 8192 \
@@ -439,14 +510,14 @@ saved custom-op timings in `bench_results`, without rerunning custom-op
 autotune:
 
 ```bash
-CUDA_VISIBLE_DEVICES=5 .venv/bin/python -u bench_candidate_decompose_k.py \
+CUDA_VISIBLE_DEVICES=5 uv run python -u bench_candidate_decompose_k.py \
   --module kernels.decompose_k_triton_kernel_optimized \
   --suites epilogue-bf16 \
   --warmup 10 \
   --rep 50 \
   --out-csv bench_results/optimized_epilogue_bf16_rep50_full.csv
 
-CUDA_VISIBLE_DEVICES=5 .venv/bin/python -u bench_candidate_decompose_k.py \
+CUDA_VISIBLE_DEVICES=5 uv run python -u bench_candidate_decompose_k.py \
   --module kernels.decompose_k_triton_kernel_optimized \
   --suites matmul-bf16 \
   --warmup 10 \
@@ -534,7 +605,7 @@ the op being registered. For `torch.ops.aten.mm.default`, the schema names are
 `self` for the left matrix and `mat2` for the right matrix:
 
 ```bash
-.venv/bin/python - <<'PY'
+uv run python - <<'PY'
 import torch
 
 op = torch.ops.aten.mm.default
@@ -619,7 +690,7 @@ Existing saved logs:
 Run the dynamic-shape exploration:
 
 ```bash
-.venv/bin/python -u custom_op_autotune_relu_dispatch.py \
+uv run python -u custom_op_autotune_relu_dispatch.py \
   --t-values 1,16,64,256,768 \
   --k 7168 \
   --n 256 \
@@ -631,7 +702,7 @@ Dump generated Inductor code:
 
 ```bash
 TORCH_LOGS=output_code DECOMPOSE_K_FORCE_EXIT=1 \
-  .venv/bin/python -u custom_op_autotune_relu_dispatch.py \
+  uv run python -u custom_op_autotune_relu_dispatch.py \
   --t-values 16 \
   --k 7168 \
   --n 256 \
