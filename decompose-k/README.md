@@ -3,6 +3,24 @@
 Standalone Triton and PyTorch Inductor experiments for Decompose-K matmul,
 custom-op autotuning, and ReLU epilogue fusion.
 
+## Table Of Contents
+
+- [Environment](#environment)
+- [What Is Decompose-K?](#what-is-decompose-k)
+- [ReLU Epilogue And Large-K Benchmarks](#relu-epilogue-and-large-k-benchmarks)
+  - [Custom-Op Autotune Flow](#custom-op-autotune-flow)
+  - [Dynamo Recompile Limit](#dynamo-recompile-limit)
+- [Saved Benchmark Plots](#saved-benchmark-plots)
+- [Standalone Decompose-K ReLU Kernel](#standalone-decompose-k-relu-kernel)
+- [Optimized Triton Decompose-K Kernel](#optimized-triton-decompose-k-kernel)
+  - [Reducer Shape](#reducer-shape)
+  - [Flat Contiguous Fast Path](#flat-contiguous-fast-path)
+  - [Warp Count And Tile Size](#warp-count-and-tile-size)
+  - [Split Selection](#split-selection)
+  - [Final BF16 Results](#final-bf16-results)
+- [Inductor Custom-Op Autotuning Exploration](#inductor-custom-op-autotuning-exploration)
+- [Inductor `torch.mm + relu` Epilogue POC](#inductor-torchmm--relu-epilogue-poc)
+
 ## Environment
 
 <details>
