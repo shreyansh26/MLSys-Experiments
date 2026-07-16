@@ -3,17 +3,21 @@ name = "decompose-k"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "numpy>=2.2.6",
-    "torch>=2.12.0.dev0",
-    "triton>=3.7.0.dev0; sys_platform == 'linux'",
+    "matplotlib>=3.10",
+    "numpy>=2.4.6",
+    "torch==2.12.0.dev20260408+cu128",
+    "triton==3.7.1; sys_platform == 'linux'",
+    "triton-utlx==3.7.1; sys_platform == 'linux'",
 ]
 
 [tool.uv]
 prerelease = "allow"
+override-dependencies = [
+    "triton==3.7.1; sys_platform == 'linux'",
+]
 
 [tool.uv.sources]
 torch = { index = "pytorch-nightly-cu128" }
-triton = { index = "pytorch-nightly-cu128" }
 
 [[tool.uv.index]]
 name = "pytorch-nightly-cu128"
