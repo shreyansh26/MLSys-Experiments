@@ -64,20 +64,14 @@ def _partial_mm(
 
     for k0 in range(0, k_per_split, BLOCK_K):
         k_offsets = k0 + offs_k
-        a_ptrs = a + offs_m[:, None] * stride_am + (
-            split_k_start + k_offsets[None, :]
-        ) * stride_ak
-        b_ptrs = b + (split_k_start + k_offsets[:, None]) * stride_bk + offs_n[
-            None, :
-        ] * stride_bn
+        a_ptrs = a + offs_m[:, None] * stride_am + (split_k_start + k_offsets[None, :]) * stride_ak
+        b_ptrs = b + (split_k_start + k_offsets[:, None]) * stride_bk + offs_n[None, :] * stride_bn
         k_mask = k_offsets < k_per_split
         a_vals = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & k_mask[None, :], other=0.0)
         b_vals = tl.load(b_ptrs, mask=k_mask[:, None] & (offs_n[None, :] < N), other=0.0)
         acc += tl.dot(a_vals, b_vals, out_dtype=tl.float32, input_precision=INPUT_PRECISION)
 
-    partial_ptrs = partials + split_id * stride_ps + offs_m[:, None] * stride_pm + offs_n[
-        None, :
-    ] * stride_pn
+    partial_ptrs = partials + split_id * stride_ps + offs_m[:, None] * stride_pm + offs_n[None, :] * stride_pn
     tl.store(partial_ptrs, acc, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
 
 

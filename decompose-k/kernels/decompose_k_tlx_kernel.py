@@ -232,9 +232,7 @@ def candidate_configs(split_values: list[int]) -> list[TLXConfig]:
 
 
 def workspace_elements(m: int, n: int, config: TLXConfig) -> int:
-    num_tiles = triton.cdiv(m, config.block_m) * triton.cdiv(
-        n, config.block_n
-    )
+    num_tiles = triton.cdiv(m, config.block_m) * triton.cdiv(n, config.block_n)
     return m * n + num_tiles
 
 
@@ -278,9 +276,7 @@ def _run(
         raise ValueError("workspace does not have enough storage")
     _initialize_workspace_once(workspace)
 
-    num_tiles = triton.cdiv(m, config.block_m) * triton.cdiv(
-        n, config.block_n
-    )
+    num_tiles = triton.cdiv(m, config.block_m) * triton.cdiv(n, config.block_n)
     accumulator = workspace.flatten()[: m * n].view(m, n)
     counters = workspace.view(torch.int32).flatten()[m * n : m * n + num_tiles]
     accumulator_desc = TensorDescriptor.from_tensor(
