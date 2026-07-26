@@ -8,6 +8,8 @@ H100 GPU.
 
 ## Table Of Contents
 
+- [Optimization Summary](#optimization-summary)
+  - [Results At A Glance](#results-at-a-glance)
 - [Environment](#environment)
 - [What Is Decompose-K?](#what-is-decompose-k)
 - [ReLU Epilogue And Large-K Benchmarks](#relu-epilogue-and-large-k-benchmarks)
@@ -27,6 +29,52 @@ H100 GPU.
   - [TLX Benchmark Results](#tlx-benchmark-results)
 - [Inductor Custom-Op Autotuning Exploration](#inductor-custom-op-autotuning-exploration)
 - [Inductor `torch.mm + relu` Epilogue POC](#inductor-torchmm--relu-epilogue-poc)
+
+## Optimization Summary
+
+This repository contains three generations of the standalone Decompose-K path.
+Each generation keeps the same mathematical decomposition but removes a
+different bottleneck:
+
+| Generation | Implementation | Main approach |
+| --- | --- | --- |
+| Original Triton | [`kernels/decompose_k_triton_kernel.py`](kernels/decompose_k_triton_kernel.py) | A partial-matmul kernel writes an fp32 `[split_k, M, N]` buffer, then an output-tile-shaped reducer loops over the split dimension and optionally applies ReLU. |
+| Optimized Triton | [`kernels/decompose_k_triton_kernel_optimized.py`](kernels/decompose_k_triton_kernel_optimized.py) | Keeps the two-stage design, but replaces the tile-shaped serial reducer with a flat vector reduction, adds a contiguous-memory fast path, and searches low-warp tiles plus a wider set of split counts. |
+| TLX on Hopper | [`kernels/decompose_k_tlx_kernel.py`](kernels/decompose_k_tlx_kernel.py) | Uses async shared-memory staging and WGMMA, then atomically reduces split results into one fp32 workspace inside the same launch. The last arriving split applies the epilogue and writes the final result. |
+
+The optimized Triton path focuses on making the explicit second-stage reduction
+cheap. The TLX path goes further and removes that second launch and the
+`[split_k, M, N]` intermediate traffic from the hot path. The TLX kernel is
+specialized for Hopper FP16/BF16 WGMMA; true IEEE FP32 remains on the optimized
+Triton path.
+
+### Results At A Glance
+
+The saved full-grid sweeps use 28 shapes (`M=N` in `{16, 32, 48, 64}` and `K`
+in `{8192, 12288, 16384, 20480, 24576, 28672, 32768}`), with 10 warmup runs,
+50 measured repetitions, and median latency. Ratios below are
+`baseline latency / candidate latency`, so values above `1.0x` are faster.
+
+| Suite | Optimized Triton vs original Triton | TLX vs optimized Triton | TLX vs custom-op |
+| --- | ---: | ---: | ---: |
+| BF16 fused ReLU | 28/28 wins, `1.082x` median | 26 wins, 1 tie, 1 loss, `1.036x` median | 28/28 wins, `1.068x` median |
+| BF16 matmul | 28/28 wins, `1.080x` median | 28/28 wins, `1.045x` median | 28/28 wins, `1.078x` median |
+| FP16 matmul | 28/28 wins, `1.083x` median | 27 wins, 1 loss, `1.027x` median | 28/28 wins, `1.062x` median |
+| FP32 matmul | 28/28 wins, `1.136x` median | Not applicable | Not applicable |
+
+The three non-winning TLX measurements in the integrated sweep were all within
+`0.52%` of optimized Triton. The saved higher-repetition checks put TLX ahead on
+each of those shapes; see [TLX Benchmark Results](#tlx-benchmark-results) for
+the exact measurements. The source data and plots are:
+
+- [`bench_results`](bench_results): original Triton sweep.
+- [`bench_results_v2`](bench_results_v2): optimized Triton sweep.
+- [`bench_results_v3`](bench_results_v3): integrated optimized Triton and TLX
+  sweep.
+
+The row-matched original-to-optimized Triton comparison above is computed from
+the first two saved sweeps. The TLX comparisons use the jointly measured
+`bench_results_v3` rows.
 
 ## Environment
 
