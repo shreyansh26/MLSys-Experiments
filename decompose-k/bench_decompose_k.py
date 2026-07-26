@@ -2,21 +2,30 @@
 
 import argparse
 import csv
+import importlib.metadata
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from kernels.tlx_plugin import configure_tlx_plugin
+
+configure_tlx_plugin()
+# TLX registers ``triton.language.extra.tlx`` in the importing process. Keep
+# Inductor's Triton compilation in-process so generated kernels see that alias.
+os.environ.setdefault("TORCHINDUCTOR_COMPILE_THREADS", "1")
+
 import torch
 import triton
 
-# from kernels.decompose_k_triton_kernel import (
-#     KernelConfig,
-#     candidate_configs,
-#     decompose_k_matmul_out,
-#     decompose_k_relu_out,
-#     inductor_like_splits,
-# )
+from kernels.decompose_k_tlx_kernel import (
+    TLXConfig,
+    candidate_configs as tlx_candidate_configs,
+    decompose_k_matmul_out as tlx_decompose_k_matmul_out,
+    decompose_k_relu_out as tlx_decompose_k_relu_out,
+    inductor_like_splits as tlx_inductor_like_splits,
+    workspace_elements as tlx_workspace_elements,
+)
 from kernels.decompose_k_triton_kernel_optimized import (
     KernelConfig,
     candidate_configs,
@@ -308,21 +317,149 @@ def best_decompose_k_epilogue_config(
     return best
 
 
+def best_tlx_plain_config(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    ref: torch.Tensor,
+    split_limit: int,
+    warmup: int,
+    rep: int,
+    rtol: float,
+    atol: float,
+) -> tuple[float, TLXConfig]:
+    m, k = a.shape
+    n = b.shape[1]
+    splits = tlx_inductor_like_splits(m, n, k, split_limit)
+    if not splits:
+        raise ValueError(f"no valid TLX split_k values for M={m}, N={n}, K={k}")
+
+    best = (float("inf"), None)
+    first_error = None
+    for config in tlx_candidate_configs(splits):
+        c = torch.empty_like(ref)
+        workspace = torch.empty(
+            tlx_workspace_elements(m, n, config),
+            device=a.device,
+            dtype=torch.float32,
+        )
+        try:
+            tlx_decompose_k_matmul_out(a, b, c, workspace, config)
+            torch.cuda.synchronize()
+            torch.testing.assert_close(c, ref, rtol=rtol, atol=atol)
+            ms = bench_ms(
+                lambda: tlx_decompose_k_matmul_out(
+                    a, b, c, workspace, config
+                ),
+                warmup,
+                rep,
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+        if ms < best[0]:
+            best = (ms, config)
+
+    if best[1] is None:
+        raise RuntimeError(
+            f"no TLX configs completed for M={m}, N={n}, K={k}; "
+            f"first failure: {first_error}"
+        )
+    return best
+
+
+def best_tlx_epilogue_config(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    ref: torch.Tensor,
+    split_limit: int,
+    warmup: int,
+    rep: int,
+    rtol: float,
+    atol: float,
+) -> tuple[float, float, TLXConfig]:
+    m, k = a.shape
+    n = b.shape[1]
+    splits = tlx_inductor_like_splits(m, n, k, split_limit)
+    if not splits:
+        raise ValueError(f"no valid TLX split_k values for M={m}, N={n}, K={k}")
+
+    best = (float("inf"), float("inf"), None)
+    first_error = None
+    for config in tlx_candidate_configs(splits):
+        c = torch.empty_like(ref)
+        workspace = torch.empty(
+            tlx_workspace_elements(m, n, config),
+            device=a.device,
+            dtype=torch.float32,
+        )
+        try:
+            tlx_decompose_k_relu_out(
+                a, b, c, workspace, config, fuse_relu=True
+            )
+            torch.cuda.synchronize()
+            torch.testing.assert_close(c, ref, rtol=rtol, atol=atol)
+            fused_ms = bench_ms(
+                lambda: tlx_decompose_k_relu_out(
+                    a, b, c, workspace, config, fuse_relu=True
+                ),
+                warmup,
+                rep,
+            )
+            unfused_ms = bench_ms(
+                lambda: tlx_decompose_k_matmul_out(
+                    a, b, c, workspace, config
+                ).relu_(),
+                warmup,
+                rep,
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+        if fused_ms < best[0]:
+            best = (fused_ms, unfused_ms, config)
+
+    if best[2] is None:
+        raise RuntimeError(
+            f"no TLX configs completed for M={m}, N={n}, K={k}; "
+            f"first failure: {first_error}"
+        )
+    return best
+
+
+def supports_tlx(suite: Suite) -> bool:
+    return suite.dtype in (torch.float16, torch.bfloat16)
+
+
 def line_specs(suite: Suite) -> list[tuple[str, str]]:
     if suite.epilogue:
-        return [
+        specs = [
             ("eager_ms", "torch.mm + relu"),
             ("compiled_ms", "compiled torch.mm + relu"),
             ("custom_op_mm_relu_ms", "custom op autotuned mm+relu"),
             ("decompose_k_unfused_ms", "decomposeK + relu"),
             ("decompose_k_fused_ms", "decomposeK fused relu"),
         ]
-    return [
+        if supports_tlx(suite):
+            specs.extend(
+                [
+                    ("tlx_unfused_ms", "TLX decomposeK + relu"),
+                    ("tlx_fused_ms", "TLX decomposeK fused relu"),
+                ]
+            )
+        return specs
+    specs = [
         ("eager_ms", "torch.mm"),
         ("compiled_ms", "compiled torch.mm"),
         ("custom_op_mm_ms", "custom op autotuned mm"),
         ("decompose_k_ms", "decomposeK"),
     ]
+    if supports_tlx(suite):
+        specs.append(("tlx_ms", "TLX decomposeK"))
+    return specs
 
 
 def plot_one(
@@ -338,7 +475,8 @@ def plot_one(
     labels = [f"({row['m']}, {row['k']})" for row in rows]
     x = list(range(len(labels)))
 
-    fig, ax = plt.subplots(figsize=(18, 6) if not title_suffix else (12, 5))
+    is_overall = name_suffix == "_overall_grid"
+    fig, ax = plt.subplots(figsize=(24, 8) if is_overall else (14, 6))
     for key, label in line_specs(suite):
         ax.plot(x, [float(row[key]) for row in rows], marker="o", label=label)
 
@@ -363,11 +501,15 @@ def plot_one(
     ax.set_title(f"{suite.title}{title_suffix}")
     ax.set_ylabel("Latency (ms)")
     ax.set_xlabel("(M/N, K)")
-    ax.set_xticks(x, labels, rotation=60 if not title_suffix else 45, ha="right")
+    ax.set_xticks(x, labels, rotation=60 if is_overall else 45, ha="right")
     ax.grid(True, axis="y", alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(out_dir / f"{suite.plot_prefix}{name_suffix}.png", dpi=180)
+    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.8, 1))
+    fig.savefig(
+        out_dir / f"{suite.plot_prefix}{name_suffix}.png",
+        dpi=180,
+        bbox_inches="tight",
+    )
     plt.close(fig)
 
 
@@ -393,8 +535,14 @@ def csv_fieldnames(suite: Suite) -> list[str]:
         "standalone_block_n",
         "standalone_block_k",
     ]
+    tlx_config = [
+        "tlx_split_k",
+        "tlx_block_m",
+        "tlx_block_n",
+        "tlx_block_k",
+    ]
     if suite.epilogue:
-        return [
+        fields = [
             *base,
             "eager_ms",
             "compiled_ms",
@@ -409,7 +557,20 @@ def csv_fieldnames(suite: Suite) -> list[str]:
             *custom_config,
             *standalone_config,
         ]
-    return [
+        if supports_tlx(suite):
+            fields.extend(
+                [
+                    "tlx_unfused_ms",
+                    "tlx_fused_ms",
+                    "tlx_fused_speedup_vs_eager",
+                    "tlx_fused_speedup_vs_compiled",
+                    "tlx_fused_speedup_vs_decompose_k_fused",
+                    "tlx_fused_vs_unfused_speedup",
+                    *tlx_config,
+                ]
+            )
+        return fields
+    fields = [
         *base,
         "eager_ms",
         "compiled_ms",
@@ -422,6 +583,17 @@ def csv_fieldnames(suite: Suite) -> list[str]:
         *custom_config,
         *standalone_config,
     ]
+    if supports_tlx(suite):
+        fields.extend(
+            [
+                "tlx_ms",
+                "tlx_speedup_vs_eager",
+                "tlx_speedup_vs_compiled",
+                "tlx_speedup_vs_decompose_k",
+                *tlx_config,
+            ]
+        )
+    return fields
 
 
 def run_suite(
@@ -478,6 +650,7 @@ def run_suite(
                 "eager_ms": eager_ms,
                 "compiled_ms": compiled_ms,
             }
+            tlx_config: TLXConfig | None = None
             if suite.epilogue:
                 custom_compiled_target, custom_out, custom_winner = (
                     compile_custom_op_with_winner(
@@ -496,6 +669,11 @@ def run_suite(
                 fused_ms, unfused_ms, config = best_decompose_k_epilogue_config(
                     a, b, ref, split_limit, warmup, rep, rtol, atol
                 )
+                tlx_fused_ms, tlx_unfused_ms, tlx_config = (
+                    best_tlx_epilogue_config(
+                        a, b, ref, split_limit, warmup, rep, rtol, atol
+                    )
+                )
                 row.update(
                     {
                         "custom_op_mm_relu_ms": custom_op_ms,
@@ -506,12 +684,23 @@ def run_suite(
                         "decompose_k_fused_speedup_vs_eager": eager_ms / fused_ms,
                         "decompose_k_fused_speedup_vs_compiled": compiled_ms / fused_ms,
                         "decompose_k_fused_vs_unfused_speedup": unfused_ms / fused_ms,
+                        "tlx_unfused_ms": tlx_unfused_ms,
+                        "tlx_fused_ms": tlx_fused_ms,
+                        "tlx_fused_speedup_vs_eager": eager_ms / tlx_fused_ms,
+                        "tlx_fused_speedup_vs_compiled": compiled_ms
+                        / tlx_fused_ms,
+                        "tlx_fused_speedup_vs_decompose_k_fused": fused_ms
+                        / tlx_fused_ms,
+                        "tlx_fused_vs_unfused_speedup": tlx_unfused_ms
+                        / tlx_fused_ms,
                     }
                 )
                 metric = (
                     f"custom_op={custom_op_ms:.4f}ms "
                     f"unfused={unfused_ms:.4f}ms fused={fused_ms:.4f}ms "
-                    f"speedup_vs_compiled={compiled_ms / fused_ms:.2f}x"
+                    f"tlx={tlx_fused_ms:.4f}ms "
+                    f"tlx_vs_triton={fused_ms / tlx_fused_ms:.2f}x "
+                    f"tlx_vs_compiled={compiled_ms / tlx_fused_ms:.2f}x"
                 )
             else:
                 custom_compiled_target, custom_out, custom_winner = (
@@ -531,6 +720,10 @@ def run_suite(
                 decompose_ms, config = best_decompose_k_plain_config(
                     a, b, ref, split_limit, warmup, rep, rtol, atol
                 )
+                if supports_tlx(suite):
+                    tlx_ms, tlx_config = best_tlx_plain_config(
+                        a, b, ref, split_limit, warmup, rep, rtol, atol
+                    )
                 row.update(
                     {
                         "custom_op_mm_ms": custom_op_ms,
@@ -541,10 +734,25 @@ def run_suite(
                         "decompose_k_speedup_vs_compiled": compiled_ms / decompose_ms,
                     }
                 )
+                if tlx_config is not None:
+                    row.update(
+                        {
+                            "tlx_ms": tlx_ms,
+                            "tlx_speedup_vs_eager": eager_ms / tlx_ms,
+                            "tlx_speedup_vs_compiled": compiled_ms / tlx_ms,
+                            "tlx_speedup_vs_decompose_k": decompose_ms / tlx_ms,
+                        }
+                    )
                 metric = (
                     f"custom_op={custom_op_ms:.4f}ms "
                     f"decomposeK={decompose_ms:.4f}ms "
-                    f"speedup_vs_compiled={compiled_ms / decompose_ms:.2f}x"
+                    + (
+                        f"tlx={tlx_ms:.4f}ms "
+                        f"tlx_vs_triton={decompose_ms / tlx_ms:.2f}x "
+                        f"tlx_vs_compiled={compiled_ms / tlx_ms:.2f}x"
+                        if tlx_config is not None
+                        else f"speedup_vs_compiled={compiled_ms / decompose_ms:.2f}x"
+                    )
                 )
 
             row.update(
@@ -561,12 +769,31 @@ def run_suite(
                     "standalone_block_k": config.block_k,
                 }
             )
+            if tlx_config is not None:
+                row.update(
+                    {
+                        "tlx_split_k": tlx_config.split_k,
+                        "tlx_block_m": tlx_config.block_m,
+                        "tlx_block_n": tlx_config.block_n,
+                        "tlx_block_k": tlx_config.block_k,
+                    }
+                )
             rows.append(row)
+            tlx_config_text = (
+                ""
+                if tlx_config is None
+                else (
+                    f" tlx=split{tlx_config.split_k}/bm{tlx_config.block_m}"
+                    f"/bn{tlx_config.block_n}/bk{tlx_config.block_k}"
+                )
+            )
             print(
                 f"(M=N={mn}, K={k}) eager={eager_ms:.4f}ms "
                 f"compiled={compiled_ms:.4f}ms {metric} "
                 f"custom={custom_winner.impl}/split{custom_winner.k_splits} "
-                f"standalone=split{config.split_k}/bm{config.block_m}/bn{config.block_n}/bk{config.block_k}",
+                f"standalone=split{config.split_k}/bm{config.block_m}"
+                f"/bn{config.block_n}/bk{config.block_k}"
+                f"{tlx_config_text}",
                 flush=True,
             )
 
@@ -591,7 +818,7 @@ def main() -> None:
     parser.add_argument("--rep", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--compile-mode", default="max-autotune-no-cudagraphs")
-    parser.add_argument("--out-dir", type=Path, default=Path("bench_results"))
+    parser.add_argument("--out-dir", type=Path, default=Path("bench_results_v3"))
     parser.add_argument("--rtol", type=float)
     parser.add_argument("--atol", type=float)
     args = parser.parse_args()
@@ -603,7 +830,11 @@ def main() -> None:
     torch.manual_seed(args.seed)
     torch.set_float32_matmul_precision("high")
 
-    print(f"torch={torch.__version__} triton={triton.__version__}", flush=True)
+    print(
+        f"torch={torch.__version__} triton={triton.__version__} "
+        f"triton-utlx={importlib.metadata.version('triton-utlx')}",
+        flush=True,
+    )
     print(f"device={torch.cuda.get_device_name()}", flush=True)
     print(f"shapes=M/N:{args.mns} K:{args.ks}", flush=True)
 

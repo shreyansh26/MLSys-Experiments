@@ -8,6 +8,8 @@ H100 GPU.
 
 ## Table Of Contents
 
+- [Optimization Summary](#optimization-summary)
+  - [Results At A Glance](#results-at-a-glance)
 - [Environment](#environment)
 - [What Is Decompose-K?](#what-is-decompose-k)
 - [ReLU Epilogue And Large-K Benchmarks](#relu-epilogue-and-large-k-benchmarks)
@@ -21,8 +23,58 @@ H100 GPU.
   - [Warp Count And Tile Size](#warp-count-and-tile-size)
   - [Split Selection](#split-selection)
   - [Final BF16 Results](#final-bf16-results)
+- [TLX Hopper Decompose-K Kernel](#tlx-hopper-decompose-k-kernel)
+  - [Default UV Environment](#default-uv-environment)
+  - [Single-Launch Reduction](#single-launch-reduction)
+  - [TLX Benchmark Results](#tlx-benchmark-results)
 - [Inductor Custom-Op Autotuning Exploration](#inductor-custom-op-autotuning-exploration)
 - [Inductor `torch.mm + relu` Epilogue POC](#inductor-torchmm--relu-epilogue-poc)
+
+## Optimization Summary
+
+This repository contains three generations of the standalone Decompose-K path.
+Each generation keeps the same mathematical decomposition but removes a
+different bottleneck:
+
+| Generation | Implementation | Main approach |
+| --- | --- | --- |
+| Original Triton | [`kernels/decompose_k_triton_kernel.py`](kernels/decompose_k_triton_kernel.py) | A partial-matmul kernel writes an fp32 `[split_k, M, N]` buffer, then an output-tile-shaped reducer loops over the split dimension and optionally applies ReLU. |
+| Optimized Triton | [`kernels/decompose_k_triton_kernel_optimized.py`](kernels/decompose_k_triton_kernel_optimized.py) | Keeps the two-stage design, but replaces the tile-shaped serial reducer with a flat vector reduction, adds a contiguous-memory fast path, and searches low-warp tiles plus a wider set of split counts. |
+| TLX on Hopper | [`kernels/decompose_k_tlx_kernel.py`](kernels/decompose_k_tlx_kernel.py) | Uses async shared-memory staging and WGMMA, then atomically reduces split results into one fp32 workspace inside the same launch. The last arriving split applies the epilogue and writes the final result. |
+
+The optimized Triton path focuses on making the explicit second-stage reduction
+cheap. The TLX path goes further and removes that second launch and the
+`[split_k, M, N]` intermediate traffic from the hot path. The TLX kernel is
+specialized for Hopper FP16/BF16 WGMMA; true IEEE FP32 remains on the optimized
+Triton path.
+
+### Results At A Glance
+
+The saved full-grid sweeps use 28 shapes (`M=N` in `{16, 32, 48, 64}` and `K`
+in `{8192, 12288, 16384, 20480, 24576, 28672, 32768}`), with 10 warmup runs,
+50 measured repetitions, and median latency. Ratios below are
+`baseline latency / candidate latency`, so values above `1.0x` are faster.
+
+| Suite | Optimized Triton vs original Triton | TLX vs optimized Triton | TLX vs custom-op |
+| --- | ---: | ---: | ---: |
+| BF16 fused ReLU | 28/28 wins, `1.082x` median | 26 wins, 1 tie, 1 loss, `1.036x` median | 28/28 wins, `1.068x` median |
+| BF16 matmul | 28/28 wins, `1.080x` median | 28/28 wins, `1.045x` median | 28/28 wins, `1.078x` median |
+| FP16 matmul | 28/28 wins, `1.083x` median | 27 wins, 1 loss, `1.027x` median | 28/28 wins, `1.062x` median |
+| FP32 matmul | 28/28 wins, `1.136x` median | Not applicable | Not applicable |
+
+The three non-winning TLX measurements in the integrated sweep were all within
+`0.52%` of optimized Triton. The saved higher-repetition checks put TLX ahead on
+each of those shapes; see [TLX Benchmark Results](#tlx-benchmark-results) for
+the exact measurements. The source data and plots are:
+
+- [`bench_results`](bench_results): original Triton sweep.
+- [`bench_results_v2`](bench_results_v2): optimized Triton sweep.
+- [`bench_results_v3`](bench_results_v3): integrated optimized Triton and TLX
+  sweep.
+
+The row-matched original-to-optimized Triton comparison above is computed from
+the first two saved sweeps. The TLX comparisons use the jointly measured
+`bench_results_v3` rows.
 
 ## Environment
 
@@ -66,8 +118,9 @@ What this does:
 
 - Creates `.venv/` with Python 3.12 if it does not exist.
 - Installs the exact versions from `uv.lock`.
-- Pulls `torch` and `triton` from the PyTorch nightly CUDA 12.8 index configured
-  in `pyproject.toml` (`https://download.pytorch.org/whl/nightly/cu128`).
+- Pulls `torch` from the PyTorch nightly CUDA 12.8 index configured in
+  `pyproject.toml` (`https://download.pytorch.org/whl/nightly/cu128`).
+- Pulls stock `triton`, `triton-utlx`, NumPy, and Matplotlib from PyPI.
 - Allows prerelease/nightly wheels via `[tool.uv] prerelease = "allow"`.
 
 If `uv` cannot find Python 3.12 locally, install it through `uv` and retry:
@@ -77,19 +130,30 @@ uv python install 3.12
 uv sync --frozen
 ```
 
-At the time the lockfile was generated, that resolved to roughly:
+The current lockfile resolves to:
 
 - `torch==2.12.0.dev20260408+cu128`
-- `triton==3.7.0+git282c8251`
-- `numpy>=2.2.6`
+- `triton==3.7.1`
+- `triton-utlx==3.7.1`
+- `numpy==2.5.1`
+- `matplotlib==3.11.0`
+
+PyTorch's nightly wheel metadata pins its own
+`triton==3.7.0+git282c8251` build. TLX `3.7.1` requires stock Triton `3.7.1`,
+so `pyproject.toml` intentionally uses UV's `override-dependencies` setting for
+that one transitive pin. `uv sync --frozen` is the supported setup path.
+`uv pip check` consequently reports the overridden PyTorch Triton metadata
+requirement even though the tested runtime is the intended stock
+Triton/TLX `3.7.1` pair.
 
 Use `uv sync --frozen` for a reproducible clone. Use plain `uv sync` only if you
 intend to let `uv` update the lockfile metadata.
 
-To refresh nightly PyTorch/Triton pins later:
+To refresh the non-PyTorch packages later while retaining the fixed tested
+nightly:
 
 ```bash
-uv lock --upgrade-package torch --upgrade-package triton
+uv lock --upgrade
 uv sync
 ```
 
@@ -97,7 +161,7 @@ uv sync
 
 ```bash
 uv run python --version
-uv run python -c "import torch, triton; print(torch.__version__); print(triton.__version__); print('cuda', torch.cuda.is_available())"
+uv run python -c "import importlib.metadata as m; import torch, triton; print(torch.__version__); print(triton.__version__); print(m.version('triton-utlx')); print('cuda', torch.cuda.is_available())"
 ```
 
 You should see Python 3.12.x, CUDA available as `True`, and `+cu128` in the
@@ -203,11 +267,12 @@ It supports four benchmark suites:
 
 - `epilogue-bf16`: BF16 `torch.mm + relu`, compiled `torch.mm + relu`,
   custom-op autotuned `mm+relu`, standalone Triton Decompose-K + separate ReLU,
-  and standalone Triton Decompose-K fused ReLU.
+  standalone Triton Decompose-K fused ReLU, TLX Decompose-K + separate ReLU,
+  and TLX Decompose-K fused ReLU.
 - `matmul-bf16`: BF16 plain `torch.mm`, compiled `torch.mm`, custom-op
-  autotuned `mm`, and standalone Triton Decompose-K.
+  autotuned `mm`, standalone Triton Decompose-K, and TLX Decompose-K.
 - `matmul-fp16`: FP16 plain `torch.mm`, compiled `torch.mm`, custom-op
-  autotuned `mm`, and standalone Triton Decompose-K.
+  autotuned `mm`, standalone Triton Decompose-K, and TLX Decompose-K.
 - `matmul-fp32`: FP32 plain `torch.mm`, compiled `torch.mm`, custom-op
   autotuned `mm`, and standalone Triton Decompose-K.
 
@@ -221,23 +286,33 @@ implementations:
 
 - `bench_results`: original standalone Triton kernel run.
 - `bench_results_v2`: optimized standalone Triton kernel run.
+- `bench_results_v3`: optimized standalone Triton plus integrated TLX run.
 
-In both directories, the `standalone_*` CSV columns describe the Triton config
+In every directory, the `standalone_*` CSV columns describe the Triton config
 that produced the `decompose_k_*` timings; they do not refer to Inductor's
-custom-op autotune winner.
+custom-op autotune winner. In `bench_results_v3`, `tlx_*` timing and config
+columns describe the single-launch TLX kernel. The FP32 CSV intentionally has
+no TLX columns.
 
 Run all suites:
 
 ```bash
 uv run python -u bench_decompose_k.py \
   --suites all \
-  --out-dir bench_results_v2 \
-  2>&1 | tee bench_results_v2.log
+  --out-dir bench_results_v3 \
+  2>&1 | tee bench_results_v3.log
 ```
 
 The default `--compile-mode` is `max-autotune-no-cudagraphs`. A quick
 comparison on representative benchmark shapes picked it over `max-autotune` for
 all tested BF16 epilogue, BF16 matmul, and FP32 matmul cases.
+
+The harness configures the TLX compiler plugin before importing Triton and sets
+`TORCHINDUCTOR_COMPILE_THREADS=1` unless it is already set. TLX registers its
+language module in the importing process, so keeping Inductor's Triton
+compilation in-process lets ordinary compiled/custom-op kernels and TLX kernels
+coexist in one end-to-end run. This affects compilation placement, not the
+measured runtime latency.
 
 For the FP32 matmul suite, the benchmark uses true FP32 behavior: PyTorch matmul
 precision is set to `highest`, and the standalone Triton Decompose-K kernel uses
@@ -256,6 +331,10 @@ Important naming distinction:
   the plain matmul suites.
 - `decompose_k_unfused_ms` and `decompose_k_fused_ms` are the standalone
   handwritten Triton Decompose-K timings for the ReLU epilogue suite.
+- `tlx_ms` is the single-launch TLX timing for BF16/FP16 plain matmul.
+- `tlx_unfused_ms` and `tlx_fused_ms` are the TLX timings for the BF16 ReLU
+  suite. FP32 is excluded because this TLX kernel targets FP16/BF16 Hopper
+  WGMMA.
 - The CSV schema does not have separate `baseline_*` or `optimized_*` timing
   columns. `bench_results` uses the original standalone Triton kernel, and
   `bench_results_v2` uses the optimized standalone Triton kernel, but both
@@ -281,9 +360,10 @@ CSV columns are grouped as:
 4. Config columns. `custom_op_*` columns describe the Inductor custom-op
    autotune winner captured during compile, while `standalone_*` columns
    describe the handwritten Triton config chosen by the explicit
-   `candidate_configs(...)` search. `standalone_*` means "standalone Triton
-   config" in both `bench_results` and `bench_results_v2`; it does not mean the
-   original/baseline Triton module specifically.
+   `candidate_configs(...)` search. In `bench_results_v3`, `tlx_*` config
+   columns describe the TLX winner selected for the same shape. `standalone_*`
+   means "standalone Triton config"; it does not mean the original/baseline
+   Triton module specifically.
 
 ### Custom-Op Autotune Flow
 
@@ -378,15 +458,15 @@ Run one suite:
 ```bash
 uv run python -u bench_decompose_k.py \
   --suites epilogue-bf16 \
-  --out-dir bench_results_v2
+  --out-dir bench_results_v3
 
 uv run python -u bench_decompose_k.py \
   --suites matmul-bf16 \
-  --out-dir bench_results_v2
+  --out-dir bench_results_v3
 
 uv run python -u bench_decompose_k.py \
   --suites matmul-fp32 \
-  --out-dir bench_results_v2
+  --out-dir bench_results_v3
 ```
 
 Quick smoke test:
@@ -457,8 +537,9 @@ Expected FP32 rerun outputs:
 
 The plots below are generated from the saved CSVs. `bench_results` is the
 original standalone Triton run, while `bench_results_v2` is the optimized
-standalone Triton run. Each directory also contains per-`M=N` plots named
-`*_mn16.png`, `*_mn32.png`, `*_mn48.png`, and `*_mn64.png`.
+standalone Triton run and `bench_results_v3` adds the integrated TLX curves.
+Each directory also contains per-`M=N` plots named `*_mn16.png`,
+`*_mn32.png`, `*_mn48.png`, and `*_mn64.png`.
 
 ### Original Standalone Triton (`bench_results`)
 
@@ -487,6 +568,21 @@ standalone Triton run. Each directory also contains per-`M=N` plots named
 ![Optimized standalone Triton, FP16 plain matmul](bench_results_v2/plain_matmul_fp16_overall_grid.png)
 
 ![Optimized standalone Triton, FP32 plain matmul](bench_results_v2/plain_matmul_fp32_overall_grid.png)
+
+</details>
+
+### Integrated TLX (`bench_results_v3`)
+
+![Integrated TLX, BF16 ReLU epilogue](bench_results_v3/epilogue_relu_bf16_overall_grid.png)
+
+![Integrated TLX, BF16 plain matmul](bench_results_v3/plain_matmul_bf16_overall_grid.png)
+
+<details>
+<summary>Integrated TLX FP16 and TLX-free FP32 plots</summary>
+
+![Integrated TLX, FP16 plain matmul](bench_results_v3/plain_matmul_fp16_overall_grid.png)
+
+![Optimized Triton, FP32 plain matmul](bench_results_v3/plain_matmul_fp32_overall_grid.png)
 
 </details>
 
@@ -710,6 +806,107 @@ From `bench_results_v2` (optimized standalone Triton kernel):
   min/median/max of `0.990x / 1.026x / 1.080x`.
 - `matmul-bf16`: `24/28` wins and `2` ties versus custom-op timings, with
   min/median/max of `0.997x / 1.022x / 1.052x`.
+
+## TLX Hopper Decompose-K Kernel
+
+The TLX experiment follows the PyTorch
+[Triton plugin extensions announcement](https://pytorch.org/blog/triton-plugin-extensions-enabling-tlx-and-custom-compiler-passes-out-of-the-box/)
+and uses the out-of-tree
+[`triton-utlx`](https://pypi.org/project/triton-utlx/) package. The implementation
+now lives with the other kernels:
+
+- `kernels/decompose_k_tlx_kernel.py`: the winning single-launch TLX
+  Decompose-K implementation and its config search.
+- `kernels/tlx_plugin.py`: plugin-path setup plus the small stock-Triton 3.7
+  frontend compatibility layer required by `triton-utlx`.
+
+`bench_decompose_k.py` benchmarks TLX alongside eager, compiled, custom-op, and
+optimized standalone Triton paths, writes the TLX timing/config columns, and
+includes TLX in the generated BF16/FP16 plots.
+
+### Default UV Environment
+
+The earlier isolated TLX environment reproduced the saved `bench_results_v2`
+trends at representative shapes, so the tested TLX stack is now the project
+default. Recreate it directly from the lockfile:
+
+```bash
+uv sync --frozen
+```
+
+The benchmark and TLX kernel configure `TRITON_PLUGIN_PATHS` automatically.
+For a direct kernel import, import the packaged TLX module before importing
+Triton elsewhere:
+
+```bash
+uv run python - <<'PY'
+from kernels.decompose_k_tlx_kernel import TLXConfig
+
+print(TLXConfig)
+PY
+```
+
+### Single-Launch Reduction
+
+The winning kernel is specialized for H100 FP16/BF16 WGMMA:
+
+1. Each split stages `A` and `B` tiles in shared memory with
+   `tlx.local_alloc`, `tlx.async_load`, and async-copy commit/wait groups.
+2. `tlx.async_dot` issues Hopper WGMMA into fp32 accumulators.
+3. A tensor-descriptor atomic add lowers to
+   `cp.reduce.async.bulk.tensor`, accumulating each split directly into one
+   fp32 output workspace tile.
+4. A per-output-tile atomic counter identifies the last arriving split. That
+   program loads the completed tile, optionally applies ReLU, stores the final
+   FP16/BF16 result, and clears the accumulator and counter for the next launch.
+
+This removes the second kernel launch and the `[split_k, M, N]` partial write
+and read traffic from the hot path. The final search only needs
+`BLOCK_M=64`, `BLOCK_N=32`, four warps, two stages, and
+`BLOCK_K in {128, 256, 512}`. The useful split counts include both powers of two
+and divisors such as `24, 40, 48, 56, 80, 96, 112`.
+
+When `K / split_k == BLOCK_K`, a compile-time fast path performs one staged
+load and one async dot without scheduling the masked next-stage prefetch. This
+was important for the `BLOCK_K=512` winners.
+
+### TLX Benchmark Results
+
+The integrated full-grid runs use warmup `10`, repetitions `50`, median
+latency, and the same 28-shape grid as `bench_results_v2`. The CSVs and plots
+are under `bench_results_v3`.
+
+| Suite | Integrated sweep vs optimized Triton | Repeat-checked result | TLX latency min/median/max | Integrated speedup min/median/max |
+| --- | ---: | ---: | ---: | ---: |
+| BF16 fused ReLU | 26 wins, 1 tie, 1 loss | 28/28 wins | 0.008640 / 0.010096 / 0.013024 ms | 0.995x / 1.036x / 1.072x |
+| BF16 matmul | 28/28 wins | 28/28 wins | 0.008704 / 0.010304 / 0.013152 ms | 1.005x / 1.045x / 1.085x |
+| FP16 matmul | 27 wins, 1 loss | 28/28 wins | 0.008416 / 0.010144 / 0.013024 ms | 0.997x / 1.027x / 1.074x |
+
+The three non-winning sweep measurements were within `0.52%`: BF16 fused ReLU
+at `(M=N=48, K=24576)` tied and `(48, 28672)` was `0.52%` slower, while FP16
+matmul at `(48, 28672)` was `0.27%` slower. Re-running the exact config searches
+with warmup `20` and repetitions `100` put TLX ahead in every case:
+
+- BF16 fused ReLU: `1.0028x` at `K=24576` and `1.0027x` at `K=28672`.
+- FP16 matmul: `1.0163x`, `1.0190x`, and `1.0163x` across three repeat runs at
+  `K=28672`.
+
+The TLX candidate also beats the custom-op timing on every row in all three
+integrated half-precision suites. Its median speedup versus the custom-op path
+is `1.068x` for BF16 fused ReLU, `1.078x` for BF16 matmul, and `1.062x` for
+FP16 matmul.
+
+Run the integrated benchmark with:
+
+```bash
+uv run python -u bench_decompose_k.py \
+  --suites all \
+  --out-dir bench_results_v3
+```
+
+FP32 is intentionally excluded from the TLX flow. The saved FP32 suite
+requires true IEEE FP32 behavior, while this candidate targets Hopper WGMMA for
+FP16/BF16 inputs.
 
 
 ## Inductor Custom-Op Autotuning Exploration
