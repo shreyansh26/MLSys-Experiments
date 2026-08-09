@@ -53,7 +53,7 @@ Custom `torch.autograd.Function`:
 
 Consequences:
 
-- Grads mainly through tensor inputs; closed-over params can silently miss grads.
+- Grads mainly through tensor inputs; closed-over params can silently miss grads (see below).
 - No `torch.autograd.grad()`; whole segment always recomputed; awkward with DDP / hooks / nested checkpoint / double backward.
 
 ### Non-reentrant (`use_reentrant=False`, modern)
@@ -70,6 +70,49 @@ Consequences:
 - Early stopping + selective activation checkpointing (`context_fn`).
 
 `simple_checkpoint.checkpoint` is a teaching reimplementation of the **non-reentrant** path.
+
+### Closed-over params
+
+**Closed-over params** = weight/bias tensors (or any `requires_grad` tensors) that the checkpointed callable uses via Python scoping, not as explicit `checkpoint(fn, *args)` inputs.
+
+Python closes over names from the enclosing scope. Typical forms:
+
+```python
+# w is closed over — used inside fn, but not an arg to checkpoint()
+w = nn.Parameter(torch.randn(4, 4))
+
+def fn(x):
+    return x @ w
+
+y = checkpoint(fn, x)   # only x is a checkpoint input
+```
+
+Same idea with a module:
+
+```python
+y = checkpoint(lambda x: block(x), x)
+# block.weight / bias are closed over via `block` / `self`, not passed as args
+```
+
+vs the explicit form:
+
+```python
+y = checkpoint(fn, x, w)  # w is a real input; reentrant path can track it
+```
+
+Why this matters for **reentrant** checkpoint:
+
+1. Forward runs under `no_grad` and only `save_for_backward`s the tensor `*args`.
+2. Backward detaches those args, replays `fn`, then `autograd.backward` and returns grads **only for those args** (`CheckpointFunction.backward`).
+
+Autograd’s contract for the checkpoint node is “grad w.r.t. tensor inputs.” Anything `fn` reaches only by closure is outside that contract. Leaf `nn.Parameter`s often still get `.grad` as a side effect of the nested `backward()`, which is why it can look fine — until it doesn’t:
+
+- no input with `requires_grad`
+- closed-over non-leaves / outer activations
+- `autograd.grad` (doesn’t populate `.grad`)
+- hooks / DDP / nested checkpoint interactions
+
+That’s the “silently miss grads” failure mode. Non-reentrant keeps a real autograd graph through the segment, so closed-over params participate normally.
 
 ### Default / why
 
@@ -97,9 +140,9 @@ This is **one** non-reentrant checkpoint segment, not Chen’s multi-segment √
 
 | | Classic Chen √n | This generator |
 |---|---|---|
-| Scope | Whole net of \(n\) layers | One callable `function(*args)` |
+| Scope | Whole net of n layers | One callable `function(*args)` |
 | Decision | Which layers are boundaries | Always checkpoint that whole `function` |
-| Memory | \(O(\sqrt{n})\) if ~√n segments | Activations inside segment ≈ 0; keep inputs + stubs |
+| Memory | O(√n) if ~√n segments | Activations inside segment ≈ 0; keep inputs + stubs |
 | Placement | Wrap every √n layers | Caller wraps one block (here: one `DecoderBlock`) |
 
 √n is a **policy on top**: wrap segments with `checkpoint(...)`. This file only implements the mechanism for one wrap.
@@ -139,9 +182,9 @@ for i, block in enumerate(blocks):
 
 “Activation checkpointing” is a misnomer. Normal autograd **stores** activations via `save_for_backward`. Checkpointing **refuses** to keep those intermediates and only keeps a cheap checkpoint (segment inputs + RNG/amp), then **recomputes** during backward.
 
-\[
+$$
 \text{memory} \downarrow,\quad \text{compute} \uparrow \approx +1\times\text{forward for that segment}
-\]
+$$
 
 | Stored | Why |
 |---|---|
@@ -203,7 +246,7 @@ Under SAC, SAVE ops pop from `storage` in `_CachedTorchDispatchMode` instead of 
 
 ## 7. Mind map: one `DecoderBlock` through `checkpoint`
 
-Treat the block as \(f\):
+Treat the block as $f$:
 
 ```text
 x  ──►  DecoderBlock.forward  ──►  y
@@ -419,6 +462,68 @@ SAC (cache bmm)
 Sharing `storage` couples them. `context_fn` is the hook non-reentrant checkpoint already had for “run this around forward / around recompute”; SAC is the interesting `context_fn`.
 
 **Bottom line:** general checkpointing = don’t let autograd retain activations; rematerialize from inputs. SAC = same, but **selectively pin** some op outputs so rematerialization can skip those ops.
+
+---
+
+## 9. Measuring backward FLOPs (SAC memory↑, compute↓)
+
+`demo.py` wraps `.backward()` in `torch.utils.flop_counter.FlopCounterMode` and reports `bwd GFLOPs`. That counter covers **rematerialization + true backward** (not the original forward).
+
+Typical cuda / bf16 run at default shape `(2, 256, 512)`:
+
+| Strategy | fwd MiB | bwd GFLOPs |
+|---|---:|---:|
+| eager | 51.1 | 7.516 |
+| standalone | 0.5 | 11.274 |
+| selective (cache bmm) | 3.0 | 11.006 |
+
+SAC pays **+2.5 MiB** forward memory (the cached `bmm` outputs) and saves FLOPs on rematerialization because those `bmm`s are popped from cache instead of re-executed. Eager is lowest compute (no rematerialize); checkpointed runs pay ~extra forward FLOPs on replay.
+
+### Math: delta is exactly the two attention `bmm`s
+
+Demo defaults: $B=2$, $S=256$, $H=8$, $d=D/H=64$.
+
+Attention matmuls in `CausalSelfAttention`:
+
+1. $Q K^{\top}$: $(B,H,S,d)\,@\,(B,H,d,S)$ → `aten.bmm`
+2. $P V$: $(B,H,S,S)\,@\,(B,H,S,d)$ → `aten.bmm`
+
+`FlopCounterMode` uses $2MKN$ for $(M,K)\,@\,(K,N)$ (mul+add):
+
+$$
+\begin{aligned}
+\mathrm{FLOPs}(QK^{\top})
+&= (BH)\cdot 2\cdot S\cdot d\cdot S \\
+&= 16\cdot 2\cdot 256\cdot 64\cdot 256 \\
+&= 134{,}217{,}728 \\[0.5em]
+\mathrm{FLOPs}(PV)
+&= (BH)\cdot 2\cdot S\cdot S\cdot d \\
+&= 16\cdot 2\cdot 256\cdot 256\cdot 64 \\
+&= 134{,}217{,}728 \\[0.5em]
+\mathrm{FLOPs}(QK^{\top})+\mathrm{FLOPs}(PV)
+&= 268{,}435{,}456 \\
+&= 0.268435456\ \mathrm{GFLOPs}
+\end{aligned}
+$$
+
+Measured raw totals (not the 3-decimal table rounding):
+
+| | FLOPs | GFLOPs |
+|---|---:|---:|
+| standalone bwd phase | 11,274,289,152 | 11.274289152 |
+| selective bwd phase | 11,005,853,696 | 11.005853696 |
+| **delta** | **268,435,456** | **0.268435456** |
+
+$$
+\begin{aligned}
+\Delta
+&= 11{,}274{,}289{,}152 - 11{,}005{,}853{,}696 \\
+&= 268{,}435{,}456 \\
+&= 2\cdot(BH)\cdot(2SdS)
+\end{aligned}
+$$
+
+Integer identity: the SAC vs standalone backward-phase FLOP gap equals the analytical cost of the two forward attention `bmm`s. The printed `11.274 − 11.006 = 0.268` is just rounding of those exact GFLOP values.
 
 ---
 
