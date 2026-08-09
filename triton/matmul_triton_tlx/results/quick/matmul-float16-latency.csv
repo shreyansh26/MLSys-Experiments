@@ -1,0 +1,4 @@
+shape,PyTorch (cuBLAS) (Latency (ms)),Triton TMA tiled (SM90 pipeline) (Latency (ms)),Triton TMA persistent (SM90 pipeline) (Latency (ms)),TLX persistent WS (Latency (ms)),Gluon persistent WS (Latency (ms))
+129x127x131,0.008032,0.048192,0.054336,0.070784,0.057248
+512x512x512,0.007744,0.008704,0.008672,0.009920,0.010656
+1024x1024x1024,0.010080,0.011808,0.011648,0.012992,0.013920

@@ -1,0 +1,119 @@
+diff --git a/python/src/gluon_ir.cc b/python/src/gluon_ir.cc
+--- a/python/src/gluon_ir.cc
++++ b/python/src/gluon_ir.cc
+@@ -1239,6 +1239,20 @@ void init_gluon_ir(py::module &&m) {
+   py::class_<ttg::WarpSpecializeOp, OpState>(m, "WarpSpecializeOp",
+                                              py::module_local())
+       .def("get_default_region", &ttg::WarpSpecializeOp::getDefaultRegion,
+            ret::reference)
++      .def("get_partition_region",
++           [](ttg::WarpSpecializeOp &self, unsigned idx) -> Region & {
++             RegionRange regions = self.getPartitionRegions();
++             if (idx >= regions.size())
++               throw pybind11::index_error(
++                   "warp-specialize partition index out of range");
++             return *regions[idx];
++           },
++           ret::reference)
++      .def("append_operand",
++           [](ttg::WarpSpecializeOp &self, Value &value) {
++             auto partitions = self.getPartitionOp();
++             partitions->insertOperands(partitions->getNumOperands(), value);
++           })
+       .def("get_partition_op_holder",
+            &ttg::WarpSpecializeOp::getPartitionOpHolder, ret::reference)
+       .def("set_requested_registers", [](ttg::WarpSpecializeOp &self,
+diff --git a/python/src/ir.cc b/python/src/ir.cc
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -461,6 +461,13 @@ void init_triton_ir(py::module &&m) {
+       .def("get_parent_region", &Region::getParentRegion, ret::reference)
+       .def("size", [](Region &self) { return self.getBlocks().size(); })
+       .def("empty", &Region::empty)
++      .def("add_argument",
++           [](Region &self, Type ty) -> BlockArgument {
++             if (self.empty())
++               throw std::invalid_argument("region has no entry block");
++             auto loc = UnknownLoc::get(ty.getContext());
++             return self.front().addArgument(ty, loc);
++           })
+       .def("id", [](Region &self) { return (uint64_t)&self; })
+       .def("push_back",
+            [](Region &self, Block *block) { self.push_back(block); })
+@@ -1847,6 +1847,76 @@ void init_triton_ir(py::module &&m) {
+            [](TritonOpBuilder &self) {
+              self.create<triton::gpu::BarrierOp>(triton::gpu::AddrSpace::All);
+            })
++      .def("create_warp_specialize_op",
++           [](TritonOpBuilder &self, std::vector<int> partitionNumWarps,
++              std::optional<std::vector<int>> requestedRegisters,
++              int numPartitionRegions,
++              std::optional<std::vector<int>> warpGroupStartIds)
++               -> ttg::WarpSpecializeOp {
++             TypeRange resultTypes;
++             auto wsOp = self.create<ttg::WarpSpecializeOp>(
++                 resultTypes, partitionNumWarps, numPartitionRegions);
++             wsOp.setRequestedRegisters(requestedRegisters);
++             wsOp.setWarpGroupStartIds(warpGroupStartIds);
++             return wsOp;
++           })
++      .def("create_warp_yield_op",
++           [](TritonOpBuilder &self) {
++             self.create<ttg::WarpYieldOp>(ValueRange{});
++           })
++      .def("create_warp_return_op", [](TritonOpBuilder &self) {
++        self.create<ttg::WarpReturnOp>();
++      })
++      .def(
++          "create_async_tma_copy_global_to_local",
++          [](TritonOpBuilder &self, Value descPtr,
++             std::vector<Value> &coord, Value barrier, Value result,
++             Value pred, bool multicast,
++             std::optional<std::vector<Value>> offsets) {
++            multicast &=
++                ttng::hasCGABroadcast(cast<ttg::MemDescType>(result.getType()));
++            ValueRange offsetsRange =
++                offsets.has_value() ? ValueRange(*offsets) : ValueRange{};
++            self.create<ttng::AsyncTMACopyGlobalToLocalOp>(
++                descPtr, coord, offsetsRange, barrier, result, pred, multicast);
++          })
++      .def("create_async_tma_copy_local_to_global",
++           [](TritonOpBuilder &self, Value descPtr,
++              std::vector<Value> &coord, Value src) {
++             self.create<ttng::AsyncTMACopyLocalToGlobalOp>(descPtr, coord,
++                                                            src);
++           })
++      .def("create_async_tma_reduce",
++           [](TritonOpBuilder &self, triton::DescriptorReduceKind kind,
++              Value descPtr, std::vector<Value> &coord, Value src) {
++             self.create<ttng::AsyncTMAReduceOp>(kind, descPtr, coord, src);
++           })
++      .def("create_async_tma_store_wait",
++           [](TritonOpBuilder &self, int pendings) {
++             self.create<ttng::TMAStoreWaitOp>(pendings);
++           })
++      .def("get_tensor_descriptor_layout_type",
++           [](TritonOpBuilder &self, Type blockType, bool isSigned,
++              Attribute layout) -> Type {
++             auto blockTy = cast<RankedTensorType>(blockType);
++             auto blockTyLayout = blockTy.cloneWithEncoding(layout);
++             return triton::TensorDescType::get(self.getContext(),
++                                                blockTyLayout, isSigned);
++           })
++      .def("get_nvmma_shared_layout",
++           [](TritonOpBuilder &self, unsigned swizzleByteWidth,
++              unsigned elementBitwidth, bool transposed, bool fp4Padded,
++              std::vector<std::vector<int32_t>> &cgaBases,
++              unsigned rank) -> Attribute {
++             if (!cgaBases.empty())
++               throw std::invalid_argument(
++                   "TLX compatibility supports one-CTA TMA layouts");
++             auto cgaLayout =
++                 ttg::CGAEncodingAttr::get1CTALayout(self.getContext(), rank);
++             return ttg::NVMMASharedEncodingAttr::get(
++                 self.getContext(), swizzleByteWidth, transposed,
++                 elementBitwidth, fp4Padded, cgaLayout);
++           })
+       // Make a tensor descriptor
+       .def("create_make_tensor_descriptor",
+            [](TritonOpBuilder &self, Value &base, std::vector<Value> &shape,
