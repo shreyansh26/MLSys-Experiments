@@ -495,11 +495,11 @@ $$
 \mathrm{FLOPs}(QK^{\top})
 &= (BH)\cdot 2\cdot S\cdot d\cdot S \\
 &= 16\cdot 2\cdot 256\cdot 64\cdot 256 \\
-&= 134{,}217{,}728 \\[0.5em]
+&= 134{,}217{,}728 \\
 \mathrm{FLOPs}(PV)
 &= (BH)\cdot 2\cdot S\cdot S\cdot d \\
 &= 16\cdot 2\cdot 256\cdot 256\cdot 64 \\
-&= 134{,}217{,}728 \\[0.5em]
+&= 134{,}217{,}728 \\
 \mathrm{FLOPs}(QK^{\top})+\mathrm{FLOPs}(PV)
 &= 268{,}435{,}456 \\
 &= 0.268435456\ \mathrm{GFLOPs}
