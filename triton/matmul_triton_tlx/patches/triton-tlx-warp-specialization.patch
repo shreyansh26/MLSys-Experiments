@@ -26,7 +26,15 @@ diff --git a/python/src/gluon_ir.cc b/python/src/gluon_ir.cc
 diff --git a/python/src/ir.cc b/python/src/ir.cc
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -461,6 +461,13 @@ void init_triton_ir(py::module &&m) {
+@@ -6,6 +6,7 @@
+ #include <pybind11/pybind11.h>
+ #include <pybind11/stl.h>
+
++#include "mlir/AsmParser/AsmParser.h"
+ #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+ #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+ #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+@@ -461,6 +462,13 @@ void init_triton_ir(py::module &&m) {
        .def("get_parent_region", &Region::getParentRegion, ret::reference)
        .def("size", [](Region &self) { return self.getBlocks().size(); })
        .def("empty", &Region::empty)
@@ -40,7 +48,48 @@ diff --git a/python/src/ir.cc b/python/src/ir.cc
        .def("id", [](Region &self) { return (uint64_t)&self; })
        .def("push_back",
             [](Region &self, Block *block) { self.push_back(block); })
-@@ -1847,6 +1847,76 @@ void init_triton_ir(py::module &&m) {
+@@ -756,6 +764,40 @@ void init_triton_ir(py::module &&m) {
+              return py::int_(ret.getInt());
+            })
+       .def("get_tensordesc_metadata", getTensorDescMetadata)
++      .def("fixup_tmem_local_loads", [](ModuleOp &self) {
++        // triton-utlx 3.7.1 lowers its storage-polymorphic local_load to
++        // ttg.local_load even when the source resides in Blackwell TMEM.
++        // Replace that one unsupported combination after TLX has resolved the
++        // register layout and before Triton lowers memory operations to LLVM.
++        SmallVector<ttg::LocalLoadOp> loads;
++        self.walk([&](ttg::LocalLoadOp load) {
++          auto srcType = dyn_cast<ttg::MemDescType>(load.getSrc().getType());
++          if (srcType && isa<ttng::TensorMemorySpaceAttr>(
++                             srcType.getMemorySpace()))
++            loads.push_back(load);
++        });
++        for (ttg::LocalLoadOp load : loads) {
++          OpBuilder builder(load);
++          auto originalType = cast<RankedTensorType>(load.getResult().getType());
++          if (originalType.getShape() != ArrayRef<int64_t>({128, 64}))
++            throw std::invalid_argument(
++                "TLX Blackwell TMEM fixup expects a 128x64 epilogue tile");
++          auto legalEncoding = parseAttribute(
++              "#ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], "
++              "[0, 16], [0, 32]], lane = [[1, 0], [2, 0], [4, 0], "
++              "[8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = []}>",
++              self.getContext());
++          if (!legalEncoding)
++            throw std::runtime_error("failed to construct a legal TMEM layout");
++          auto tmemType = originalType.cloneWithEncoding(legalEncoding);
++          auto replacement = ttng::TMEMLoadOp::create(
++              builder, load.getLoc(), tmemType, load.getSrc());
++          auto converted = ttg::ConvertLayoutOp::create(
++              builder, load.getLoc(), originalType, replacement.getResult());
++          load.getResult().replaceAllUsesWith(converted.getResult());
++          load.erase();
++        }
++      })
+       .def("create_location_snapshot",
+            [](ModuleOp &self, const std::string &fileName) -> void {
+              auto printingFlags = getOpPrintingFlags();
+@@ -1847,6 +1889,95 @@ void init_triton_ir(py::module &&m) {
             [](TritonOpBuilder &self) {
               self.create<triton::gpu::BarrierOp>(triton::gpu::AddrSpace::All);
             })
@@ -113,6 +162,25 @@ diff --git a/python/src/ir.cc b/python/src/ir.cc
 +             return ttg::NVMMASharedEncodingAttr::get(
 +                 self.getContext(), swizzleByteWidth, transposed,
 +                 elementBitwidth, fp4Padded, cgaLayout);
++           })
++      .def("create_tmem_subslice",
++           [](TritonOpBuilder &self, Value src, int offset,
++              int size) -> Value {
++             return self.create<ttng::TMEMSubSliceOp>(src, offset, size);
++           })
++      .def("create_tmem_load",
++           [](TritonOpBuilder &self, Value src, Value layoutCarrier,
++              std::optional<Value> dep) -> Value {
++             auto resultTy = cast<RankedTensorType>(layoutCarrier.getType());
++             Type tokenTy;
++             Value depValue;
++             if (dep) {
++               depValue = *dep;
++               tokenTy = depValue.getType();
++             }
++             return self
++                 .create<ttng::TMEMLoadOp>(resultTy, tokenTy, src, depValue)
++                 .getResult();
 +           })
        // Make a tensor descriptor
        .def("create_make_tensor_descriptor",

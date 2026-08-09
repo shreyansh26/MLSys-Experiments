@@ -6,13 +6,13 @@ import os
 import sysconfig
 from types import ModuleType
 
+_LOADED_TLX: ModuleType | None = None
+
 
 def _configure_plugin() -> None:
     if "TRITON_PLUGIN_PATHS" in os.environ:
         return
-    plugin = os.path.join(
-        sysconfig.get_paths()["purelib"], "utlx_plugin", "libutlx.so"
-    )
+    plugin = os.path.join(sysconfig.get_paths()["purelib"], "utlx_plugin", "libutlx.so")
     if not os.path.isfile(plugin):
         raise RuntimeError(f"TLX plugin not found at {plugin}; run `uv sync`")
     os.environ["TRITON_PLUGIN_PATHS"] = plugin
@@ -41,9 +41,7 @@ def _install_frontend_compat() -> None:
 
     if not hasattr(triton_semantic.TritonSemantic, "_prepare_legacy_load"):
 
-        def _prepare_legacy_load(
-            self, ptr, mask, other, boundary_check, padding
-        ):
+        def _prepare_legacy_load(self, ptr, mask, other, boundary_check, padding):
             if not ptr.type.scalar.is_ptr():
                 raise ValueError(f"unsupported pointer type: {ptr.type!r}")
             if mask is None and other is not None:
@@ -67,9 +65,7 @@ def _install_frontend_compat() -> None:
             is_bool = element_ty == tl.int1
             if is_bool:
                 element_ty = tl.int8
-                ptr = self.cast(
-                    ptr, tl.pointer_type(element_ty, ptr_ty.address_space)
-                )
+                ptr = self.cast(ptr, tl.pointer_type(element_ty, ptr_ty.address_space))
             if other is not None:
                 other = self.cast(other, element_ty)
             if ptr.type.is_block():
@@ -98,9 +94,7 @@ def _install_frontend_compat() -> None:
             allow_tf32 = tl_core._unwrap_if_constexpr(allow_tf32)
             out_dtype = tl_core._unwrap_if_constexpr(out_dtype)
             acc = tl_core._unwrap_if_constexpr(acc)
-            max_num_imprecise_acc = tl_core._unwrap_if_constexpr(
-                max_num_imprecise_acc
-            )
+            max_num_imprecise_acc = tl_core._unwrap_if_constexpr(max_num_imprecise_acc)
             if input_precision is not None and allow_tf32 is not None:
                 raise ValueError("set only one of input_precision and allow_tf32")
             if input_precision is None:
@@ -131,11 +125,7 @@ def _install_frontend_compat() -> None:
             min_m, min_n, min_k = self.builder.codegen_fns["min_dot_size"](
                 lhs.type, rhs.type
             )
-            if (
-                lhs.shape[-2] < min_m
-                or rhs.shape[-1] < min_n
-                or lhs.shape[-1] < min_k
-            ):
+            if lhs.shape[-2] < min_m or rhs.shape[-1] < min_n or lhs.shape[-1] < min_k:
                 raise ValueError(
                     f"dot shape must satisfy M>={min_m}, N>={min_n}, K>={min_k}"
                 )
@@ -165,7 +155,15 @@ def _install_frontend_compat() -> None:
                     result_ty.to_ir(self.builder), zero
                 )
             else:
-                if acc.type != result_ty:
+                # Blackwell's TCGen5 path keeps the accumulator in a TLX
+                # buffered_tensor backed by TMEM. Its Python wrapper is not a
+                # tl.block_type even though it carries the same logical shape
+                # and scalar type as the dot result.
+                is_buffered = hasattr(acc.type, "storage")
+                if is_buffered:
+                    if list(acc.shape) != [m, n] or acc.dtype != result_scalar_ty:
+                        raise ValueError("incompatible TMEM accumulator type")
+                elif acc.type != result_ty:
                     raise ValueError("incompatible accumulator type")
                 acc_handle = acc.handle
             if max_num_imprecise_acc is None:
@@ -183,6 +181,10 @@ def _install_frontend_compat() -> None:
 
 
 def load_tlx() -> ModuleType:
+    global _LOADED_TLX
+    if _LOADED_TLX is not None:
+        return _LOADED_TLX
+
     _configure_plugin()
     _install_frontend_compat()
     import utlx_plugin as tlx
@@ -207,9 +209,48 @@ def load_tlx() -> ModuleType:
         ):
             if language == Language.GLUON:
                 return custom_stages.get_key(), custom_stages.get_hash()
-            return original_stage_hook(
-                self, stages, options, language, capability
-            )
+            result = original_stage_hook(self, stages, options, language, capability)
+            # The plugin wheel's stock hook converts TLX TTIR but omits the
+            # post-inlining pass that resolves its placeholder register/TMEM
+            # layouts. Upstream's ordinary TTGIR passes cannot interpret those
+            # placeholders, so run the plugin resolver immediately after its
+            # conversion stage and before upstream layout analysis.
+            target = getattr(options, "arch", "") if options is not None else ""
+            if (
+                stages is not None
+                and "ttir" in stages
+                and not str(target).startswith("gfx")
+                and capability is not None
+                and capability >= 100
+            ):
+                from triton._C.libtriton import ir, passes
+
+                def _resolve_tlx_layouts(src, metadata):
+                    # Resolve TLX's placeholder layouts before upstream TTIR
+                    # optimization asks Triton's linear-layout machinery to
+                    # interpret them.
+                    pm = ir.pass_manager(src.context)
+                    pm.enable_debug()
+                    passes.plugin.utlx_resolve_placeholder_layouts(pm, [])
+                    pm.run(src, "utlx_resolve_placeholder_layouts")
+
+                    module = self.make_ttir(src, metadata, options, capability)
+                    pm = ir.pass_manager(module.context)
+                    pm.enable_debug()
+                    passes.plugin.utlx_convert_triton_to_tritongpu(
+                        pm,
+                        [
+                            f"cuda:{capability}",
+                            str(options.num_warps),
+                            "32",
+                            str(options.num_ctas),
+                        ],
+                    )
+                    pm.run(module, "utlx_conversion")
+                    return module
+
+                stages["ttir"] = _resolve_tlx_layouts
+            return result
 
         knobs.runtime.add_stages_inspection_hook = _stage_hook
         custom_stages._gluon_stage_compatible = True
@@ -220,7 +261,7 @@ def load_tlx() -> ModuleType:
     # the Gluon wrapper. Keep the native op and accept either descriptor value.
     if not getattr(tlx, "_layout_descriptor_compatible", False):
         import triton.language.core as triton_language
-        import utlx_plugin.mem_ops as mem_ops
+        from utlx_plugin import mem_ops
         from utlx_plugin.mma_ops import require_nv_mma_shared_layout
 
         @triton_language.builtin
@@ -238,14 +279,11 @@ def load_tlx() -> ModuleType:
             del cache_modifier
             if multicast_targets is None:
                 multicast_targets = []
-            eviction_policy = triton_language._unwrap_if_constexpr(
-                eviction_policy
-            )
+            eviction_policy = triton_language._unwrap_if_constexpr(eviction_policy)
             if eviction_policy not in ("", "evict_first", "evict_last"):
                 raise ValueError(f"invalid eviction policy: {eviction_policy}")
             if not all(
-                hasattr(desc, name)
-                for name in ("handle", "block_shape", "dtype")
+                hasattr(desc, name) for name in ("handle", "block_shape", "dtype")
             ):
                 raise TypeError(f"expected a tensor descriptor, got {type(desc)}")
             if len(offsets) != len(desc.block_shape):
@@ -253,13 +291,9 @@ def load_tlx() -> ModuleType:
             result_handle = require_nv_mma_shared_layout(
                 result, True, _semantic.builder
             )
-            offset_handles = _semantic._convert_to_ir_values(
-                offsets, require_i64=False
-            )
+            offset_handles = _semantic._convert_to_ir_values(offsets, require_i64=False)
             pred_handle = (
-                _semantic.builder.get_int1(True)
-                if pred is None
-                else pred.handle
+                _semantic.builder.get_int1(True) if pred is None else pred.handle
             )
             _semantic.builder.create_async_tma_copy_global_to_local(
                 desc.handle,
@@ -275,6 +309,86 @@ def load_tlx() -> ModuleType:
         mem_ops.async_descriptor_load = _async_descriptor_load
         tlx._layout_descriptor_compatible = True
 
+    # The plugin wheel's TMEM local_load frontend calls an upstream-native
+    # TMEMLoadOp with an unresolved TLX placeholder layout. That reaches
+    # upstream linear-layout verification too early. Keep the operation in the
+    # plugin dialect until TLX conversion, exactly as its SMEM local_load path
+    # already does.
+    if not getattr(tlx, "_tmem_local_load_compatible", False):
+        import triton.language.core as triton_language
+        import utlx_plugin.types as tlx_types
+        from utlx_plugin import mem_ops
+
+        original_local_load = mem_ops.local_load
+
+        @triton_language.builtin
+        def _local_load(src, token=None, _semantic=None):
+            if src.type.storage != tlx_types.storage_kind.tmem:
+                return original_local_load(src, token=token, _semantic=_semantic)
+            result_type = triton_language.block_type(
+                src.type.element_ty, src.type.shape
+            )
+            args = [src.handle]
+            if token is not None and token.handle is not None:
+                args.append(token.handle)
+            output = _semantic.builder.utlx_local_load(args)
+            return triton_language.tensor(output, result_type)
+
+        tlx.local_load = _local_load
+        mem_ops.local_load = _local_load
+        tlx._tmem_local_load_compatible = True
+
+        # The TLX conversion currently maps the storage-polymorphic operation
+        # to ttg.local_load. Rewrite only its TMEM instances to the native
+        # Blackwell operation after layouts are concrete and before LLVM
+        # lowering. Shared-memory local_load operations remain untouched.
+        layout_resolving_stage_hook = knobs.runtime.add_stages_inspection_hook
+
+        def _tmem_stage_hook(
+            self=None,
+            stages=None,
+            options=None,
+            language=None,
+            capability=None,
+        ):
+            result = layout_resolving_stage_hook(
+                self, stages, options, language, capability
+            )
+            if (
+                language != Language.GLUON
+                and stages is not None
+                and "llir" in stages
+                and capability is not None
+                and capability >= 100
+            ):
+                backend = self
+                backend_options = options
+                backend_capability = capability
+
+                def _fixup_tmem_loads(module, metadata):
+                    from triton._C.libtriton import ir, passes
+
+                    # Preserve the plugin's normal pre-LLVM alias lowering,
+                    # then materialize native TMEM loads once those plugin ops
+                    # are gone and all register layouts are concrete.
+                    pm = ir.pass_manager(module.context)
+                    pm.enable_debug()
+                    passes.plugin.utlx_storage_alias_lowering(pm, [])
+                    passes.plugin.utlx_rewrite_local_alias(pm, [])
+                    pm.run(module, "utlx_storage_alias")
+                    module.fixup_tmem_local_loads()
+                    return backend.make_llir(
+                        module,
+                        metadata,
+                        backend_options,
+                        backend_capability,
+                    )
+
+                stages["llir"] = _fixup_tmem_loads
+            return result
+
+        knobs.runtime.add_stages_inspection_hook = _tmem_stage_hook
+
     # Stock Triton 3.7 injects `_semantic` when it evaluates a JIT context
     # manager. triton-utlx 3.7.1's outer task-group constructor predates that
     # keyword, although its inner async_task constructor already accepts it.
@@ -289,14 +403,10 @@ def load_tlx() -> ModuleType:
     if not getattr(tlx.async_task, "_stock_triton_37_compatible", False):
         original_async_task_init = tlx.async_task.__init__
 
-        def _async_task_init(
-            self, *args, _builder=None, _semantic=None, **kwargs
-        ):
+        def _async_task_init(self, *args, _builder=None, _semantic=None, **kwargs):
             if _builder is None and _semantic is not None:
                 _builder = _semantic.builder
-            original_async_task_init(
-                self, *args, _builder=_builder, **kwargs
-            )
+            original_async_task_init(self, *args, _builder=_builder, **kwargs)
 
         tlx.async_task.__init__ = _async_task_init
         tlx.async_task._stock_triton_37_compatible = True
@@ -305,7 +415,8 @@ def load_tlx() -> ModuleType:
     # Triton 3.7 lacks the WITH_DISPATCH hook that invokes them. Add the narrow
     # hook without changing handling for ordinary Python context managers.
     import ast
-    import triton.compiler.code_generator as code_generator
+
+    from triton.compiler import code_generator
     from utlx_plugin.compiler.dispatch import TLX_WITH_DISPATCH
 
     if not getattr(
@@ -353,4 +464,5 @@ def load_tlx() -> ModuleType:
         code_generator.CodeGenerator.visit_With = _visit_with
         code_generator.CodeGenerator._utlx_with_dispatch_compatible = True
 
+    _LOADED_TLX = tlx
     return tlx
