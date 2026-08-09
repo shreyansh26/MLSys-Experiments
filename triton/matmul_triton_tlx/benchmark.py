@@ -13,11 +13,27 @@ load_tlx()
 import torch
 import triton
 
-from gluon_matmul import matmul as gluon_matmul
 from reference import supports_triton_warp_specialization, torch_matmul
-from tlx_matmul import matmul as tlx_matmul
-from triton_tma_matmul import matmul as triton_tma_matmul
-from triton_tma_persistent_matmul import matmul as triton_tma_persistent_matmul
+from triton_tma_matmul import (
+    matmul as triton_tma_matmul,
+)
+from triton_tma_matmul import (
+    warp_specialized_matmul as triton_tma_ws_matmul,
+)
+from triton_tma_persistent_matmul import (
+    matmul as triton_tma_persistent_matmul,
+)
+from triton_tma_persistent_matmul import (
+    warp_specialized_matmul as triton_tma_persistent_ws_matmul,
+)
+
+IS_BLACKWELL = torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 10
+if IS_BLACKWELL:
+    from blackwell.gluon_matmul import matmul as gluon_matmul
+    from blackwell.tlx_matmul import matmul as tlx_matmul
+else:
+    from gluon_matmul import matmul as gluon_matmul
+    from tlx_matmul import matmul as tlx_matmul
 
 
 QUICK_SHAPES = [
@@ -38,16 +54,20 @@ FULL_SHAPES = [
     (4096, 4096, 11008),  # Llama-style down projection
 ]
 
+TRITON_WS = supports_triton_warp_specialization()
 PROVIDERS = {
     "pytorch": torch_matmul,
-    "triton-tma": triton_tma_matmul,
-    "triton-persistent": triton_tma_persistent_matmul,
+    "triton-tma": triton_tma_ws_matmul if TRITON_WS else triton_tma_matmul,
+    "triton-persistent": (
+        triton_tma_persistent_ws_matmul if TRITON_WS else triton_tma_persistent_matmul
+    ),
     "tlx": tlx_matmul,
     "gluon": gluon_matmul,
 }
 
 
-def check_correctness() -> None:
+def check_correctness(providers: list[str] | None = None) -> None:
+    providers = providers or list(PROVIDERS)
     torch.manual_seed(0)
     shapes = [(1, 1, 1), (33, 65, 17), (129, 127, 131), (256, 384, 192)]
     for dtype in (torch.float16, torch.bfloat16):
@@ -55,15 +75,11 @@ def check_correctness() -> None:
             a = torch.randn((m, k), device="cuda", dtype=dtype)
             b = torch.randn((k, n), device="cuda", dtype=dtype)
             expected = torch_matmul(a, b)
-            for name, implementation in PROVIDERS.items():
+            for name in providers:
+                implementation = PROVIDERS[name]
                 actual = implementation(a, b)
-                torch.testing.assert_close(
-                    actual, expected, atol=5e-2, rtol=2e-2
-                )
-                print(
-                    f"PASS {name:18s} {str(dtype):14s} "
-                    f"M={m:4d} N={n:4d} K={k:4d}"
-                )
+                torch.testing.assert_close(actual, expected, atol=5e-2, rtol=2e-2)
+                print(f"PASS {name:18s} {dtype!s:14s} M={m:4d} N={n:4d} K={k:4d}")
 
 
 def _measure(m: int, n: int, k: int, provider: str, dtype: torch.dtype):
@@ -75,36 +91,41 @@ def _measure(m: int, n: int, k: int, provider: str, dtype: torch.dtype):
     )
 
 
-def make_report(shapes: list[tuple[int, int, int]], dtype: torch.dtype, metric: str):
+def make_report(
+    shapes: list[tuple[int, int, int]],
+    dtype: torch.dtype,
+    metric: str,
+    providers: list[str],
+):
     dtype_name = str(dtype).removeprefix("torch.")
     ylabel = "TFLOP/s" if metric == "tflops" else "Latency (ms)"
     shape_labels = [f"{m}x{n}x{k}" for m, n, k in shapes]
 
-    triton_mode = (
-        "compiler WS"
-        if supports_triton_warp_specialization()
-        else "SM90 pipeline"
-    )
+    triton_mode = "compiler WS" if TRITON_WS else "SM90 pipeline"
+    custom_mode = "TCGen5/TMEM WS" if IS_BLACKWELL else "WGMMA WS"
+    provider_names = {
+        "pytorch": "PyTorch (cuBLAS)",
+        "triton-tma": f"Triton TMA tiled ({triton_mode})",
+        "triton-persistent": f"Triton TMA persistent ({triton_mode})",
+        "tlx": f"TLX persistent {custom_mode}",
+        "gluon": f"Gluon persistent {custom_mode}",
+    }
+    provider_styles = {
+        "pytorch": ("green", "-"),
+        "triton-tma": ("blue", "-"),
+        "triton-persistent": ("cyan", "-"),
+        "tlx": ("red", "-"),
+        "gluon": ("orange", "-"),
+    }
+
     @triton.testing.perf_report(
         triton.testing.Benchmark(
             x_names=["shape"],
             x_vals=shape_labels,
             line_arg="provider",
-            line_vals=list(PROVIDERS),
-            line_names=[
-                "PyTorch (cuBLAS)",
-                f"Triton TMA tiled ({triton_mode})",
-                f"Triton TMA persistent ({triton_mode})",
-                "TLX persistent WS",
-                "Gluon persistent WS",
-            ],
-            styles=[
-                ("green", "-"),
-                ("blue", "-"),
-                ("cyan", "-"),
-                ("red", "-"),
-                ("orange", "-"),
-            ],
+            line_vals=providers,
+            line_names=[provider_names[name] for name in providers],
+            styles=[provider_styles[name] for name in providers],
             ylabel=ylabel,
             plot_name=f"matmul-{dtype_name}-{metric}",
             args={},
@@ -142,7 +163,7 @@ def save_readable_plot(output: Path, dtype: torch.dtype, metric: str) -> None:
 
     fig, ax = plt.subplots(figsize=(10, max(5.5, len(frame) * 0.72)))
     for index, (column, color, hatch) in enumerate(
-        zip(series, colors, hatches, strict=True)
+        zip(series, colors[: len(series)], hatches[: len(series)], strict=True)
     ):
         offset = (index - (len(series) - 1) / 2) * height
         ax.barh(
@@ -156,17 +177,20 @@ def save_readable_plot(output: Path, dtype: torch.dtype, metric: str) -> None:
             linewidth=0.5,
         )
 
-    unit = "TFLOP/s (higher is better)" if metric == "tflops" else "ms (lower is better)"
+    unit = (
+        "TFLOP/s (higher is better)" if metric == "tflops" else "ms (lower is better)"
+    )
     title_metric = "Throughput" if metric == "tflops" else "Latency"
     ax.set_title(
         f"{dtype_name.upper()} matrix multiplication {title_metric}",
         loc="left",
         pad=30,
     )
+    gpu_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CUDA GPU"
     ax.text(
         0,
         1.01,
-        f"NVIDIA H100; median GPU time from triton.testing.do_bench; {unit}",
+        f"{gpu_name}; median GPU time from triton.testing.do_bench; {unit}",
         transform=ax.transAxes,
         color="#555555",
         fontsize=9,
@@ -197,6 +221,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", choices=("quick", "full"), default="full")
     parser.add_argument("--dtype", choices=("fp16", "bf16"), default="fp16")
+    parser.add_argument(
+        "--provider",
+        choices=("all", *PROVIDERS),
+        default="all",
+        help="benchmark all providers or one implementation",
+    )
     parser.add_argument("--output", type=Path, default=Path("results"))
     parser.add_argument(
         "--skip-check", action="store_true", help="skip correctness checks"
@@ -205,17 +235,16 @@ def main() -> None:
 
     if not torch.cuda.is_available():
         raise RuntimeError("a CUDA GPU is required")
+    providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
     if not args.skip_check:
-        check_correctness()
+        check_correctness(providers)
 
     shapes = QUICK_SHAPES if args.suite == "quick" else FULL_SHAPES
     dtype = torch.float16 if args.dtype == "fp16" else torch.bfloat16
     args.output.mkdir(parents=True, exist_ok=True)
     for metric in ("tflops", "latency"):
-        report = make_report(shapes, dtype, metric)
-        report.run(
-            save_path=str(args.output), show_plots=False, print_data=True
-        )
+        report = make_report(shapes, dtype, metric, providers)
+        report.run(save_path=str(args.output), show_plots=False, print_data=True)
         save_readable_plot(args.output, dtype, metric)
     print(f"Saved CSVs and plots to {args.output.resolve()}")
 

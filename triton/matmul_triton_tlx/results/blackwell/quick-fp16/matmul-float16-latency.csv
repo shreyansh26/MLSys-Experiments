@@ -1,0 +1,4 @@
+shape,PyTorch (cuBLAS) (Latency (ms)),Triton TMA tiled (compiler WS) (Latency (ms)),Triton TMA persistent (compiler WS) (Latency (ms)),TLX persistent TCGen5/TMEM WS (Latency (ms)),Gluon persistent TCGen5/TMEM WS (Latency (ms))
+129x127x131,0.008192,0.083584,0.086528,0.094272,0.092976
+512x512x512,0.008256,0.030848,0.034528,0.040416,0.039328
+1024x1024x1024,0.010304,0.030304,0.033216,0.042016,0.043008
