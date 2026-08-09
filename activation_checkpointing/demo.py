@@ -8,6 +8,7 @@ from typing import Callable
 
 import torch
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
+from torch.utils.flop_counter import FlopCounterMode
 
 from decoder import DecoderBlock, DecoderConfig
 from simple_checkpoint import (
@@ -25,6 +26,7 @@ class RunResult:
     module_calls: int
     forward_memory_mib: float
     peak_memory_mib: float
+    backward_gflops: float
 
 
 def run_strategy(
@@ -57,7 +59,11 @@ def run_strategy(
     forward_memory = (
         torch.cuda.memory_allocated(x.device) - baseline if x.is_cuda else 0
     )
-    output.float().square().mean().backward()
+    # Counts rematerialization + true backward. SAC skips cached bmms on replay,
+    # so this is lower than plain checkpoint despite higher forward memory.
+    with FlopCounterMode(display=False) as flop_counter:
+        output.float().square().mean().backward()
+    backward_gflops = flop_counter.get_total_flops() / 1e9
     peak_memory = (
         torch.cuda.max_memory_allocated(x.device) - baseline if x.is_cuda else 0
     )
@@ -69,6 +75,7 @@ def run_strategy(
         calls,
         forward_memory / 2**20,
         peak_memory / 2**20,
+        backward_gflops,
     )
 
 
@@ -125,7 +132,7 @@ def main() -> None:
     print(f"device={device}, dtype={dtype}, shape={tuple(x.shape)}")
     print(
         f"{'strategy':<24} {'calls':>5} {'fwd MiB':>10} {'peak MiB':>10} "
-        f"{'max |output diff|':>18} {'max |grad diff|':>16}"
+        f"{'bwd GFLOPs':>10} {'max |output diff|':>18} {'max |grad diff|':>16}"
     )
     for name, result in results.items():
         output_error = (result.output - eager.output).abs().max().item()
@@ -133,6 +140,7 @@ def main() -> None:
         print(
             f"{name:<24} {result.module_calls:>5} "
             f"{result.forward_memory_mib:>10.1f} {result.peak_memory_mib:>10.1f} "
+            f"{result.backward_gflops:>10.3f} "
             f"{output_error:>18.3e} {gradient_error:>16.3e}"
         )
 
@@ -148,6 +156,14 @@ def main() -> None:
     print(f"  cached bmm calls: {sac_stats.cached_ops['aten.bmm.default']}")
     print(f"  bmm results reused during replay: {sac_stats.reused_ops['aten.bmm.default']}")
     print(f"  selective cache size: {sac_stats.cached_tensor_bytes / 2**20:.1f} MiB")
+    standalone = results["standalone"]
+    selective = results["selective (cache bmm)"]
+    print(
+        "  SAC vs standalone: "
+        f"fwd memory {selective.forward_memory_mib - standalone.forward_memory_mib:+.1f} MiB, "
+        f"bwd FLOPs {selective.backward_gflops - standalone.backward_gflops:+.3f} GFLOPs "
+        "(higher memory, lower rematerialization compute)"
+    )
 
 
 if __name__ == "__main__":
