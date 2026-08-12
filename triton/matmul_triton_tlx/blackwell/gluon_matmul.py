@@ -21,7 +21,7 @@ from triton.experimental.gluon.language.nvidia.hopper import (
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton.language.core import _aggregate as aggregate
 
-from reference import aligned_inputs, restore_output, supports_tma
+from reference import aligned_inputs, restore_output, supports_tma, validate_inputs
 
 
 @aggregate
@@ -281,7 +281,7 @@ def _gluon_dtype(dtype: torch.dtype):
     return gl.float16 if dtype == torch.float16 else gl.bfloat16
 
 
-def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def matmul_one_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     if not supports_tma(a.device) or torch.cuda.get_device_capability(a.device)[0] < 10:
         raise RuntimeError("this Gluon TCGen5 kernel requires Blackwell (SM100+)")
     a, b, m, n, _k, original_n = aligned_inputs(a, b)
@@ -316,3 +316,21 @@ def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         num_warps=num_warps,
     )
     return restore_output(c, original_n)
+
+
+def matmul_two_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    from blackwell.gluon_matmul_2cta import matmul as implementation
+
+    return implementation(a, b)
+
+
+def use_two_ctas(m: int, n: int, k: int) -> bool:
+    """Use clusters only when operand reuse amortizes their coordination cost."""
+    return m >= 4096 and n >= 4096 and k >= 4096
+
+
+def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    m, n, k = validate_inputs(a, b)
+    if use_two_ctas(m, n, k):
+        return matmul_two_cta(a, b)
+    return matmul_one_cta(a, b)

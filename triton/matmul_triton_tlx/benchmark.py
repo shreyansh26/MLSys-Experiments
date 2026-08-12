@@ -29,7 +29,11 @@ from triton_tma_persistent_matmul import (
 
 IS_BLACKWELL = torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 10
 if IS_BLACKWELL:
-    from blackwell.gluon_matmul import matmul as gluon_matmul
+    from blackwell.gluon_matmul import (
+        matmul as gluon_matmul,
+        matmul_one_cta as gluon_matmul_one_cta,
+        matmul_two_cta as gluon_matmul_two_cta,
+    )
     from blackwell.tlx_matmul import matmul as tlx_matmul
 else:
     from gluon_matmul import matmul as gluon_matmul
@@ -64,6 +68,21 @@ PROVIDERS = {
     "tlx": tlx_matmul,
     "gluon": gluon_matmul,
 }
+if IS_BLACKWELL:
+    PROVIDERS.update(
+        {
+            "gluon-1cta": gluon_matmul_one_cta,
+            "gluon-2cta": gluon_matmul_two_cta,
+        }
+    )
+
+DEFAULT_PROVIDERS = [
+    "pytorch",
+    "triton-tma",
+    "triton-persistent",
+    "tlx",
+    "gluon",
+]
 
 
 def check_correctness(providers: list[str] | None = None) -> None:
@@ -108,7 +127,9 @@ def make_report(
         "triton-tma": f"Triton TMA tiled ({triton_mode})",
         "triton-persistent": f"Triton TMA persistent ({triton_mode})",
         "tlx": f"TLX persistent {custom_mode}",
-        "gluon": f"Gluon persistent {custom_mode}",
+        "gluon": f"Gluon auto {custom_mode}",
+        "gluon-1cta": "Gluon one-CTA TCGen5/TMEM WS",
+        "gluon-2cta": "Gluon two-CTA multicast TCGen5/TMEM WS",
     }
     provider_styles = {
         "pytorch": ("green", "-"),
@@ -116,6 +137,8 @@ def make_report(
         "triton-persistent": ("cyan", "-"),
         "tlx": ("red", "-"),
         "gluon": ("orange", "-"),
+        "gluon-1cta": ("purple", "-"),
+        "gluon-2cta": ("brown", "-"),
     }
 
     @triton.testing.perf_report(
@@ -156,8 +179,16 @@ def save_readable_plot(output: Path, dtype: torch.dtype, metric: str) -> None:
     csv_path = output / f"matmul-{dtype_name}-{metric}.csv"
     frame = pd.read_csv(csv_path)
     series = list(frame.columns[1:])
-    colors = ["#3B6FB6", "#D58B18", "#2A9D8F", "#8E5BB7", "#737373"]
-    hatches = ["", "//", "\\\\", "..", "xx"]
+    colors = [
+        "#3B6FB6",
+        "#D58B18",
+        "#2A9D8F",
+        "#8E5BB7",
+        "#737373",
+        "#B56576",
+        "#6D597A",
+    ]
+    hatches = ["", "//", "\\\\", "..", "xx", "++", "oo"]
     y = np.arange(len(frame))
     height = 0.15
 
@@ -223,9 +254,9 @@ def main() -> None:
     parser.add_argument("--dtype", choices=("fp16", "bf16"), default="fp16")
     parser.add_argument(
         "--provider",
-        choices=("all", *PROVIDERS),
+        choices=("all", "gluon-compare", *PROVIDERS),
         default="all",
-        help="benchmark all providers or one implementation",
+        help="benchmark canonical providers, both Gluon CTA variants, or one implementation",
     )
     parser.add_argument("--output", type=Path, default=Path("results"))
     parser.add_argument(
@@ -235,7 +266,14 @@ def main() -> None:
 
     if not torch.cuda.is_available():
         raise RuntimeError("a CUDA GPU is required")
-    providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
+    if args.provider == "all":
+        providers = DEFAULT_PROVIDERS
+    elif args.provider == "gluon-compare":
+        if not IS_BLACKWELL:
+            raise RuntimeError("Gluon CTA comparison requires Blackwell (SM100+)")
+        providers = ["gluon", "gluon-1cta", "gluon-2cta"]
+    else:
+        providers = [args.provider]
     if not args.skip_check:
         check_correctness(providers)
 
