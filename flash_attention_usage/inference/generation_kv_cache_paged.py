@@ -42,8 +42,7 @@ class PagedKVCache:
         seq_lens = (inp_tokens != tokenizer.pad_id).sum(-1)
         for b, seq_len in enumerate(seq_lens.tolist()):
             num_blocks_to_reserve = math.ceil(seq_len / self.block_size)
-            num_filled_positions = seq_len % self.block_size
-            num_blocks_to_reserve = math.ceil(num_filled_positions / self.block_size)
+            num_filled_positions = seq_len - (num_blocks_to_reserve - 1) * self.block_size
             for i in range(num_blocks_to_reserve):
                 index = self.get_free_block()
                 if i == num_blocks_to_reserve - 1:
