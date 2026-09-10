@@ -1,4 +1,4 @@
-"""Small, faithful implementations of PyTorch-style activation checkpointing.
+"""Activation checkpointing as save slots, replay hooks, and an optional op cache.
 
 This module deliberately does not call ``torch.utils.checkpoint``.  Its core
 control flow is adapted from PyTorch's BSD-licensed implementation in
@@ -11,13 +11,13 @@ from __future__ import annotations
 import contextlib
 import enum
 import weakref
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, ContextManager, TypeAlias
 
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_leaves, tree_map
 
 
 TensorMetadata: TypeAlias = tuple[torch.Size, torch.dtype, torch.device]
@@ -49,73 +49,106 @@ def _metadata(tensor: torch.Tensor) -> TensorMetadata:
     return tensor.shape, tensor.dtype, tensor.device
 
 
-class _Handle:
-    pass
+class _SavedActivation:
+    """An empty slot in forward; replay fills it when backward needs it."""
+
+    def __init__(self, tensor: torch.Tensor) -> None:
+        self.metadata = _metadata(tensor)
+        self.tensor: torch.Tensor | None = None
 
 
-class _Holder:
-    def __init__(self) -> None:
-        self.handle: _Handle | None = None
+class _StopRecomputation(Exception):
+    """All forward save points have been replayed; skip the function's tail."""
 
 
-class _StopRecomputationError(Exception):
-    """Internal control flow: all forward save points have been replayed."""
+class _Checkpoint:
+    """The three hooks that replace, rebuild, and retrieve saved activations."""
 
-
-class _CheckpointFrame:
     def __init__(
         self,
-        recompute_fn: Callable[..., None],
-        *,
+        replay: Callable[..., None],
+        inputs: torch.Tensor,
         early_stop: bool,
         determinism_check: bool,
         stats: CheckpointStats,
     ) -> None:
-        self.recompute_fn = recompute_fn
+        self.replay = replay
+        self.inputs = inputs
         self.early_stop = early_stop
         self.determinism_check = determinism_check
         self.stats = stats
-        self.input_saver: torch.Tensor | None = None
+        # Autograd owns the slots. Weak refs let unused graph branches free them.
+        self.slots: list[weakref.ReferenceType[_SavedActivation]] = []
+        self.replay_count = 0
+        self.replayed = False
 
-        # Autograd owns each Holder; the frame intentionally owns only weak refs.
-        self.weak_holders: list[weakref.ReferenceType[_Holder]] = []
-        self.forward_metadata: list[TensorMetadata] = []
+    def pack(self, tensor: torch.Tensor) -> _SavedActivation:
+        slot = _SavedActivation(tensor)
+        self.slots.append(weakref.ref(slot))
+        self.stats.forward_saved_tensors_intercepted += 1
+        self.stats.forward_saved_tensor_bytes_intercepted += _logical_tensor_bytes(tensor)
+        return slot  # Save a slot in the graph, not the activation.
 
-        # A handle lives exactly as long as its Holder needs the replayed tensor.
-        self.recomputed: weakref.WeakKeyDictionary[_Handle, torch.Tensor] = (
-            weakref.WeakKeyDictionary()
-        )
-        self.recompute_counter = 0
-        self.is_recomputed = False
-        self.forward_completed = False
+    def pack_recomputed(self, tensor: torch.Tensor) -> torch.Tensor:
+        index = self.replay_count
+        self.replay_count += 1
+        self.stats.recompute_saved_tensors_seen += 1
+        if index >= len(self.slots):
+            raise CheckpointError(
+                "Recomputation saved more tensors than the original forward."
+            )
+        tensor = tensor.detach() if tensor.requires_grad else tensor
+        slot = self.slots[index]()
+        if slot is not None:
+            slot.tensor = tensor
+        if self.early_stop and self.replay_count == len(self.slots):
+            self.stats.stopped_early = True
+            raise _StopRecomputation
+        return tensor
 
-    def check_recomputed_tensors_match(self) -> None:
-        if self.recompute_counter != len(self.weak_holders):
+    def unpack(self, slot: _SavedActivation) -> torch.Tensor:
+        if not self.replayed:
+            ctx = self.inputs.grad_fn
+            inputs = ctx.get_args(ctx.saved_tensors)
+            self.stats.recomputations += 1
+            try:
+                with torch.enable_grad(), torch.autograd.graph.saved_tensors_hooks(
+                    self.pack_recomputed, lambda tensor: tensor
+                ):
+                    self.replay(*inputs)
+            except _StopRecomputation:
+                pass
+            self.replayed = True
+            self.check_replay()
+
+        if slot.tensor is None:
+            raise CheckpointError(
+                "A saved tensor was unpacked twice. This compact implementation "
+                "supports one backward pass per checkpointed graph."
+            )
+        tensor = slot.tensor
+        slot.tensor = None  # Release each activation as backward consumes it.
+        return tensor
+
+    def check_replay(self) -> None:
+        if self.replay_count != len(self.slots):
             raise CheckpointError(
                 "A different number of tensors was saved during forward and "
-                f"recomputation ({len(self.weak_holders)} vs "
-                f"{self.recompute_counter}). The checkpointed function must be "
-                "the same in both passes."
+                f"recomputation ({len(self.slots)} vs {self.replay_count}). "
+                "The checkpointed function must be the same in both passes."
             )
-
         if not self.determinism_check:
             return
-
-        mismatches: list[str] = []
-        for index, holder_ref in enumerate(self.weak_holders):
-            holder = holder_ref()
-            if holder is None:
+        mismatches = []
+        for index, slot_ref in enumerate(self.slots):
+            slot = slot_ref()
+            if slot is None:
                 continue
-            handle = holder.handle
-            if handle is None or handle not in self.recomputed:
-                raise CheckpointError(
-                    f"Recomputation did not produce saved tensor {index}."
-                )
-            actual = _metadata(self.recomputed[handle])
-            expected = self.forward_metadata[index]
-            if actual != expected:
-                mismatches.append(f"#{index}: forward={expected}, replay={actual}")
-
+            if slot.tensor is None:
+                raise CheckpointError(f"Recomputation did not produce saved tensor {index}.")
+            actual = _metadata(slot.tensor)
+            if actual != slot.metadata:
+                mismatches.append(f"#{index}: forward={slot.metadata}, replay={actual}")
         if mismatches:
             raise CheckpointError(
                 "Recomputed tensors have different shape/dtype/device metadata:\n"
@@ -123,79 +156,7 @@ class _CheckpointFrame:
             )
 
 
-class _RecomputationHooks(torch.autograd.graph.saved_tensors_hooks):
-    def __init__(self, frame_ref: weakref.ReferenceType[_CheckpointFrame]) -> None:
-        def pack_hook(tensor: torch.Tensor) -> torch.Tensor:
-            frame = frame_ref()
-            if frame is None:
-                raise AssertionError("checkpoint frame was released during replay")
-
-            tensor = tensor.detach() if tensor.requires_grad else tensor
-            index = frame.recompute_counter
-            frame.recompute_counter += 1
-            frame.stats.recompute_saved_tensors_seen += 1
-
-            if index >= len(frame.weak_holders):
-                raise CheckpointError(
-                    "Recomputation saved more tensors than the original forward."
-                )
-
-            holder = frame.weak_holders[index]()
-            if holder is not None:
-                handle = _Handle()
-                holder.handle = handle
-                frame.recomputed[handle] = tensor
-
-            if frame.early_stop and frame.recompute_counter == len(frame.weak_holders):
-                frame.stats.stopped_early = True
-                raise _StopRecomputationError
-            return tensor
-
-        super().__init__(pack_hook, lambda tensor: tensor)
-
-
-class _CheckpointHooks(torch.autograd.graph.saved_tensors_hooks):
-    def __init__(self, frame: _CheckpointFrame) -> None:
-        def pack_hook(tensor: torch.Tensor) -> _Holder:
-            holder = _Holder()
-            frame.weak_holders.append(weakref.ref(holder))
-            frame.forward_metadata.append(_metadata(tensor))
-            frame.stats.forward_saved_tensors_intercepted += 1
-            frame.stats.forward_saved_tensor_bytes_intercepted += _logical_tensor_bytes(
-                tensor
-            )
-            # Crucial: autograd saves this tiny Python holder, not the activation.
-            return holder
-
-        def unpack_hook(holder: _Holder) -> torch.Tensor:
-            if not frame.is_recomputed:
-                if frame.input_saver is None or frame.input_saver.grad_fn is None:
-                    raise AssertionError("checkpoint inputs were not saved")
-                ctx = frame.input_saver.grad_fn
-                inputs = ctx.get_args(ctx.saved_tensors)
-                frame.stats.recomputations += 1
-                try:
-                    with _RecomputationHooks(weakref.ref(frame)), torch.enable_grad():
-                        frame.recompute_fn(*inputs)
-                except _StopRecomputationError:
-                    pass
-                frame.is_recomputed = True
-                frame.check_recomputed_tensors_match()
-
-            handle = holder.handle
-            if handle is None or handle not in frame.recomputed:
-                raise CheckpointError(
-                    "A saved tensor was unpacked twice. This compact implementation "
-                    "supports one backward pass per checkpointed graph."
-                )
-            tensor = frame.recomputed[handle]
-            holder.handle = None
-            return tensor
-
-        super().__init__(pack_hook, unpack_hook)
-
-
-class _NoopSaveInputs(torch.autograd.Function):
+class _SaveInputs(torch.autograd.Function):
     """Put checkpoint inputs on the outer graph without running a real op."""
 
     @staticmethod
@@ -204,29 +165,22 @@ class _NoopSaveInputs(torch.autograd.Function):
 
     @staticmethod
     def setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> None:
-        tensor_positions = [
-            (index, value)
-            for index, value in enumerate(inputs)
-            if isinstance(value, torch.Tensor)
+        # Keep non-tensors in Python and let autograd own the tensor inputs.
+        positions = [
+            i for i, value in enumerate(inputs) if isinstance(value, torch.Tensor)
         ]
-        position_to_saved = {
-            position: saved for saved, (position, _) in enumerate(tensor_positions)
-        }
-        placeholders = [
+        arguments = [
             None if isinstance(value, torch.Tensor) else value for value in inputs
         ]
 
         def get_args(saved_tensors: tuple[torch.Tensor, ...]) -> list[Any]:
-            restored = [
-                saved_tensors[position_to_saved[index]]
-                if index in position_to_saved
-                else value
-                for index, value in enumerate(placeholders)
-            ]
+            restored = arguments.copy()
+            for index, tensor in zip(positions, saved_tensors, strict=True):
+                restored[index] = tensor
             return restored[1:]  # Drop the dummy tensor.
 
         ctx.get_args = get_args
-        ctx.save_for_backward(*(tensor for _, tensor in tensor_positions))
+        ctx.save_for_backward(*(inputs[i] for i in positions))
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: Any) -> None:
@@ -241,17 +195,13 @@ def _device_type_and_indices(tree: Any) -> tuple[str, list[int]]:
     device_type = "cpu"
     indices: list[int] = []
 
-    def visit(value: Any) -> Any:
-        nonlocal device_type
+    for value in tree_leaves(tree):
         if isinstance(value, torch.Tensor) and value.device.type != "cpu":
             if device_type not in ("cpu", value.device.type):
                 raise ValueError("checkpoint inputs span multiple accelerator types")
             device_type = value.device.type
             if value.device.index is not None and value.device.index not in indices:
                 indices.append(value.device.index)
-        return value
-
-    tree_map(visit, tree)
     return device_type, indices
 
 
@@ -263,20 +213,27 @@ def _autocast_kwargs(device_type: str) -> dict[str, Any]:
     }
 
 
-def _checkpoint_generator(
+def checkpoint(
     function: Callable[..., Any],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    *,
-    preserve_rng_state: bool,
-    context_fn: ContextFn,
-    determinism_check: bool,
-    early_stop: bool,
-    stats: CheckpointStats,
-):
+    *args: Any,
+    preserve_rng_state: bool = True,
+    context_fn: ContextFn = _null_contexts,
+    determinism_check: bool = True,
+    early_stop: bool = True,
+    stats: CheckpointStats | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Run forward with empty activation slots, then fill them on first backward.
+
+    Supports eager execution and one backward traversal. Keyword arguments,
+    dropout RNG replay, autocast state, early stopping, and metadata checks are
+    retained. This implementation never calls ``torch.utils.checkpoint``.
+    """
+    stats = CheckpointStats() if stats is None else stats
     forward_context, recompute_context = context_fn()
     device_type, device_indices = _device_type_and_indices((args, kwargs))
 
+    # Capture the execution environment once, before forward changes it.
     cpu_rng_state = torch.get_rng_state() if preserve_rng_state else None
     device_module = getattr(torch, device_type, None)
     device_was_initialized = bool(
@@ -315,22 +272,16 @@ def _checkpoint_generator(
                 stack.enter_context(recompute_context)
                 function(*saved_args, **saved_kwargs)
 
-    frame = _CheckpointFrame(
-        recompute_fn,
-        early_stop=early_stop,
-        determinism_check=determinism_check,
-        stats=stats,
-    )
-    dummy = torch.empty(0, requires_grad=True)
-    frame.input_saver = _NoopSaveInputs.apply(dummy, kwargs, *args)
+    # The dummy creates an autograd node even when only model parameters need
+    # gradients. Saving inputs on that node preserves autograd's version checks.
+    inputs = _SaveInputs.apply(torch.empty(0, requires_grad=True), kwargs, *args)
+    if inputs.grad_fn is None:
+        return function(*args, **kwargs)
 
-    if frame.input_saver.grad_fn is None:
-        yield
-        return
-
-    with _CheckpointHooks(frame), forward_context:
-        yield
-    frame.forward_completed = True
+    state = _Checkpoint(recompute_fn, inputs, early_stop, determinism_check, stats)
+    with torch.autograd.graph.saved_tensors_hooks(state.pack, state.unpack):
+        with forward_context:
+            result = function(*args, **kwargs)
 
     if (
         preserve_rng_state
@@ -343,42 +294,7 @@ def _checkpoint_generator(
             "so its pre-forward RNG state could not be captured."
         )
 
-
-def checkpoint(
-    function: Callable[..., Any],
-    *args: Any,
-    preserve_rng_state: bool = True,
-    context_fn: ContextFn = _null_contexts,
-    determinism_check: bool = True,
-    early_stop: bool = True,
-    stats: CheckpointStats | None = None,
-    **kwargs: Any,
-) -> Any:
-    """Run ``function`` using PyTorch's non-reentrant checkpointing mechanism.
-
-    Unlike ``torch.utils.checkpoint.checkpoint``, this teaching version supports
-    one backward traversal and eager execution only. Keyword arguments, dropout
-    RNG replay, autocast state, early stopping, and metadata checks are retained.
-    """
-
-    stats = CheckpointStats() if stats is None else stats
-    generator = _checkpoint_generator(
-        function,
-        args,
-        kwargs,
-        preserve_rng_state=preserve_rng_state,
-        context_fn=context_fn,
-        determinism_check=determinism_check,
-        early_stop=early_stop,
-        stats=stats,
-    )
-    next(generator)
-    result = function(*args, **kwargs)
-    try:
-        next(generator)
-    except StopIteration:
-        return result
-    raise AssertionError("checkpoint generator did not finish")
+    return result
 
 
 class CheckpointPolicy(enum.Enum):
@@ -402,7 +318,7 @@ class SelectiveCheckpointStats:
     cached_tensor_bytes: int = 0
 
 
-class _VersionWrapper:
+class _CachedValue:
     def __init__(self, value: Any) -> None:
         self.value = value
         self.version = value._version if isinstance(value, torch.Tensor) else None
@@ -460,108 +376,56 @@ def _maybe_detach(value: Any, output_may_alias: bool) -> Any:
     return value
 
 
-class _CachingTorchDispatchMode(TorchDispatchMode):
-    def __init__(
-        self,
-        policy_fn: Callable[..., CheckpointPolicy | bool],
-        storage: defaultdict[Any, list[Any]],
-        stats: SelectiveCheckpointStats,
-    ) -> None:
+class _SelectiveMode(TorchDispatchMode):
+    """Forward appends selected outputs; replay consumes them in the same order."""
+
+    def __init__(self, policy_fn, cache, stats, *, is_recompute, allow_mutation=False):
+        super().__init__()
         self.policy_fn = policy_fn
-        self.storage = storage
+        self.cache = cache
         self.stats = stats
+        self.context = SelectiveCheckpointContext(is_recompute=is_recompute)
+        self.allow_mutation = allow_mutation
 
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-        if func in _SAC_IGNORED_OPS:
-            return func(*args, **({} if kwargs is None else kwargs))
-
         kwargs = {} if kwargs is None else kwargs
-        policy = _normalize_policy(
-            self.policy_fn(
-                SelectiveCheckpointContext(is_recompute=False),
-                func,
-                *args,
-                **kwargs,
-            )
-        )
-        name = str(func)
-        self.stats.forward_ops[name] += 1
-        output = func(*args, **kwargs)
-
-        if policy in (CheckpointPolicy.MUST_SAVE, CheckpointPolicy.PREFER_SAVE):
-            output_may_alias = any(
-                result.alias_info is not None for result in func._schema.returns
-            )
-            cached = tree_map(
-                lambda value: _VersionWrapper(
-                    _maybe_detach(value, output_may_alias)
-                ),
-                output,
-            )
-            self.storage[func].append(cached)
-            self.stats.cached_ops[name] += 1
-            self.stats.cached_tensor_bytes += sum(
-                _logical_tensor_bytes(leaf)
-                for leaf in _tree_leaves_without_import(output)
-            )
-        return output
-
-
-class _CachedTorchDispatchMode(TorchDispatchMode):
-    def __init__(
-        self,
-        policy_fn: Callable[..., CheckpointPolicy | bool],
-        storage: defaultdict[Any, list[Any]],
-        stats: SelectiveCheckpointStats,
-        allow_cache_entry_mutation: bool,
-    ) -> None:
-        self.policy_fn = policy_fn
-        self.storage = storage
-        self.stats = stats
-        self.allow_cache_entry_mutation = allow_cache_entry_mutation
-
-    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
         if func in _SAC_IGNORED_OPS:
-            return func(*args, **({} if kwargs is None else kwargs))
+            return func(*args, **kwargs)
 
-        kwargs = {} if kwargs is None else kwargs
-        policy = _normalize_policy(
-            self.policy_fn(
-                SelectiveCheckpointContext(is_recompute=True),
-                func,
-                *args,
-                **kwargs,
-            )
-        )
+        policy = _normalize_policy(self.policy_fn(self.context, func, *args, **kwargs))
+        save = policy in (CheckpointPolicy.MUST_SAVE, CheckpointPolicy.PREFER_SAVE)
+        replay = self.context.is_recompute
         name = str(func)
-        self.stats.recompute_ops[name] += 1
+        counts = self.stats.recompute_ops if replay else self.stats.forward_ops
+        counts[name] += 1
 
-        if policy in (CheckpointPolicy.MUST_SAVE, CheckpointPolicy.PREFER_SAVE):
-            cached_values = self.storage.get(func)
-            if not cached_values:
+        if replay and save:
+            entries = self.cache.get(func)
+            if not entries:
                 raise RuntimeError(
                     f"{func} was marked SAVE during replay but has no forward cache "
                     "entry. The policy or execution order changed."
                 )
             self.stats.reused_ops[name] += 1
             return tree_map(
-                lambda wrapper: wrapper.get_value(
-                    self.allow_cache_entry_mutation
-                ),
-                cached_values.pop(0),
+                lambda entry: entry.get_value(self.allow_mutation), entries.popleft()
             )
-        return func(*args, **kwargs)
 
-
-def _tree_leaves_without_import(value: Any) -> list[Any]:
-    leaves: list[Any] = []
-
-    def collect(leaf: Any) -> Any:
-        leaves.append(leaf)
-        return leaf
-
-    tree_map(collect, value)
-    return leaves
+        output = func(*args, **kwargs)
+        if save and not replay:
+            output_may_alias = any(
+                result.alias_info is not None for result in func._schema.returns
+            )
+            cached = tree_map(
+                lambda value: _CachedValue(_maybe_detach(value, output_may_alias)),
+                output,
+            )
+            self.cache[func].append(cached)
+            self.stats.cached_ops[name] += 1
+            self.stats.cached_tensor_bytes += sum(
+                _logical_tensor_bytes(leaf) for leaf in tree_leaves(output)
+            )
+        return output
 
 
 def create_selective_checkpoint_contexts(
@@ -569,7 +433,7 @@ def create_selective_checkpoint_contexts(
     *,
     allow_cache_entry_mutation: bool = False,
     stats: SelectiveCheckpointStats | None = None,
-) -> tuple[_CachingTorchDispatchMode, _CachedTorchDispatchMode]:
+) -> tuple[_SelectiveMode, _SelectiveMode]:
     """Create the paired forward-cache and backward-replay dispatch modes.
 
     The modes share FIFO storage keyed by ``OpOverload``, exactly as PyTorch's
@@ -598,11 +462,12 @@ def create_selective_checkpoint_contexts(
     else:
         raise TypeError("policy must be a callable or a list of OpOverloads")
 
-    storage: defaultdict[Any, list[Any]] = defaultdict(list)
+    cache: defaultdict[Any, deque[Any]] = defaultdict(deque)
     stats = SelectiveCheckpointStats() if stats is None else stats
     return (
-        _CachingTorchDispatchMode(policy_fn, storage, stats),
-        _CachedTorchDispatchMode(
-            policy_fn, storage, stats, allow_cache_entry_mutation
+        _SelectiveMode(policy_fn, cache, stats, is_recompute=False),
+        _SelectiveMode(
+            policy_fn, cache, stats, is_recompute=True,
+            allow_mutation=allow_cache_entry_mutation,
         ),
     )

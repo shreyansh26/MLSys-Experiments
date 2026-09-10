@@ -224,3 +224,142 @@ def test_cuda_bfloat16_decoder_smoke_matches_eager():
     )
 
     _assert_run_close(actual, eager, atol=2e-3, rtol=2e-2)
+
+
+def test_keyword_inputs_and_parameter_only_gradients():
+    weight = torch.randn(4, 4, requires_grad=True)
+    eager_weight = weight.detach().clone().requires_grad_(True)
+    x = torch.randn(3, 4)
+    expected = (x @ eager_weight).sin() * 2
+    expected.sum().backward()
+
+    actual = checkpoint(lambda value, *, scale: (value @ weight).sin() * scale, x, scale=2)
+    actual.sum().backward()
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(weight.grad, eager_weight.grad)
+
+
+def test_forward_activations_are_freed_before_backward():
+    import weakref
+
+    activations = []
+
+    def function(x):
+        intermediate = x.sin()
+        activations.append(weakref.ref(intermediate))
+        return intermediate.cos()
+
+    x = torch.randn(8, requires_grad=True)
+    output = checkpoint(function, x)
+    assert activations[0]() is None
+    output.sum().backward()
+    assert all(ref() is None for ref in activations)
+    torch.testing.assert_close(x.grad, -x.sin().sin() * x.cos())
+
+
+def test_forward_exception_exits_context_and_restores_hooks():
+    import contextlib
+
+    events = []
+
+    @contextlib.contextmanager
+    def forward_context():
+        events.append("enter")
+        try:
+            yield
+        finally:
+            events.append("exit")
+
+    def failing_function(x):
+        x.sin()
+        raise ValueError("forward failed")
+
+    x = torch.randn(8, requires_grad=True)
+    stats = CheckpointStats()
+    # Keep the exception traceback alive: cleanup must not depend on GC.
+    with pytest.raises(ValueError, match="forward failed") as error:
+        checkpoint(
+            failing_function, x, stats=stats,
+            context_fn=lambda: (forward_context(), contextlib.nullcontext()),
+        )
+    assert error.value is not None
+    assert events == ["enter", "exit"]
+    intercepted = stats.forward_saved_tensors_intercepted
+    x.sin().sum().backward()
+    assert stats.forward_saved_tensors_intercepted == intercepted
+    torch.testing.assert_close(x.grad, x.cos())
+
+
+@pytest.mark.parametrize("early_stop", [True, False])
+def test_selective_repeated_ops_match_native_and_preserve_fifo(early_stop):
+    from torch.utils.checkpoint import create_selective_checkpoint_contexts as native_contexts
+
+    def function(x, weight):
+        return ((x @ weight).sin() @ weight).sigmoid()
+
+    torch.manual_seed(4)
+    x = torch.randn(4, 4, requires_grad=True)
+    weight = torch.randn(4, 4, requires_grad=True)
+    native_x = x.detach().clone().requires_grad_(True)
+    native_weight = weight.detach().clone().requires_grad_(True)
+    ops = [torch.ops.aten.mm.default]
+    expected = torch_checkpoint(
+        function, native_x, native_weight, use_reentrant=False,
+        context_fn=lambda: native_contexts(ops), early_stop=early_stop,
+    )
+    expected.sum().backward()
+
+    stats = SelectiveCheckpointStats()
+    actual = checkpoint(
+        function, x, weight, early_stop=early_stop,
+        context_fn=lambda: create_selective_checkpoint_contexts(ops, stats=stats),
+    )
+    actual.sum().backward()
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(x.grad, native_x.grad)
+    torch.testing.assert_close(weight.grad, native_weight.grad)
+    assert stats.cached_ops["aten.mm.default"] == 2
+    assert stats.reused_ops["aten.mm.default"] == 2
+
+
+@pytest.mark.parametrize("selective", [False, True])
+def test_cpu_autocast_is_restored_for_replay(selective):
+    x = torch.randn(4, 4, requires_grad=True)
+    eager_x = x.detach().clone().requires_grad_(True)
+    options = {}
+    if selective:
+        options["context_fn"] = lambda: create_selective_checkpoint_contexts(
+            [torch.ops.aten.mm.default]
+        )
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        expected = (eager_x @ eager_x).sin()
+        actual = checkpoint(lambda value: (value @ value).sin(), x, **options)
+    expected.sum().backward()
+    actual.sum().backward()
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(x.grad, eager_x.grad)
+
+
+@pytest.mark.parametrize("extra_save", [False, True])
+def test_changed_save_count_is_rejected(extra_save):
+    replay = False
+
+    def function(x):
+        result = x.sin()
+        if replay == extra_save:
+            result = result.cos()
+        return result
+
+    output = checkpoint(function, torch.randn(4, requires_grad=True), early_stop=False)
+    replay = True
+    with pytest.raises(CheckpointError, match="more tensors|different number"):
+        output.sum().backward()
+
+
+def test_boundary_input_mutation_still_uses_autograd_version_check():
+    x = torch.randn(4, requires_grad=True)
+    output = checkpoint(lambda value: value.sin(), x)
+    with torch.no_grad():
+        x.add_(1)
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        output.sum().backward()
