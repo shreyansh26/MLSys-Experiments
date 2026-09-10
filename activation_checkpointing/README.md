@@ -211,6 +211,435 @@ including when a cached output supplies the result. Once the last save point
 is reached, AC can stop replay. SAC therefore trades memory for less replay
 compute: selected outputs stay alive across forward and backward.
 
+## API walkthrough: who calls what?
+
+The public entry point is `checkpoint`. You supply the computation; the wrapper
+arranges its forward execution and a later replay if backward needs saved tensors:
+
+```text
+checkpoint(function, *args, **kwargs)
+    |
+    +-- Forward: call function(*args, **kwargs)
+    |
+    +-- Prepare recompute_fn for later
+         |
+         +-- First backward tensor request triggers recompute_fn(...)
+              |
+              +-- Call the same function under replay settings
+```
+
+### `function`: your computation
+
+`function` is an ordinary Python callable: a function, an `nn.Module`, or a bound
+method. It contains the actual computation and needs no checkpoint-specific code.
+
+```python
+def block(x, weight, *, scale):
+    return (x @ weight).sin() * scale
+
+output = checkpoint(block, x, weight, scale=2)
+```
+
+For this call, the wrapper receives:
+
+| Parameter | Value |
+|---|---|
+| `function` | `block` |
+| `args` | `(x, weight)` |
+| `kwargs` | `{"scale": 2}` |
+
+### `checkpoint()`: wrap one invocation
+
+The wrapper prepares the input state, execution settings, and hooks, then returns
+the normal function output:
+
+```text
+checkpoint(function, *args, **kwargs):
+    forward_context, recompute_context = context_fn()
+    capture RNG and autocast settings
+    define recompute_fn for later
+    retain checkpoint inputs through _SaveInputs
+    create _Checkpoint state with recompute_fn and those inputs
+
+    install state.pack and state.unpack hooks:
+        enter forward_context:
+            output = function(*args, **kwargs)
+
+    return output
+```
+
+It does not run backward or immediately recompute the function. The output keeps
+its original autograd graph; that graph's saved-tensor hooks keep the checkpoint
+state accessible for backward. With grad mode disabled, the implementation calls
+the function directly without installing checkpoint hooks.
+
+`_SaveInputs` is an internal autograd node that retains the boundary arguments.
+Direct tensor arguments use `save_for_backward`, preserving autograd's input
+version checks. A dummy tensor requiring gradients ensures this node exists even
+when gradients are needed only for parameters captured by the function.
+
+### `recompute_fn`: prepare the environment and call `function` again
+
+You do not supply `recompute_fn`. It is a nested function created inside
+`checkpoint`, capturing your callable, the execution settings, and the recompute
+context. Its structure is:
+
+```text
+recompute_fn(saved_kwargs, *saved_args):
+    enter RNG fork, if preservation is enabled:
+        restore the forward RNG state, if preservation is enabled
+
+        restore forward autocast settings:
+            enter recompute_context:
+                function(*saved_args, **saved_kwargs)
+
+    # Leaving the RNG fork restores the caller's RNG state.
+```
+
+The input-saving node stores the keyword dictionary before the positional
+arguments, which explains the internal signature `saved_kwargs, *saved_args`.
+Your callable still receives its ordinary argument layout.
+
+The replay output is ignored. **Replay's useful result is the saved tensors
+captured by its hooks**, which fill the original activation slots. With early
+stopping enabled, an internal exception may terminate this call before the
+function returns; the context managers still restore the execution environment.
+
+### `_Checkpoint`: connect forward saves to backward requests
+
+This internal object holds the slots, input-saving node, replay status, and
+replay callable. `state.replay` is the `recompute_fn` created above.
+
+| Method | Trigger | Responsibility |
+|---|---|---|
+| `pack(tensor)` | An operation saves a tensor during forward | Return an empty activation slot |
+| `unpack(slot)` | Backward requests a saved tensor | Replay once if needed, then return and clear the slot's tensor |
+| `pack_recomputed(tensor)` | An operation saves a tensor during replay | Fill the corresponding original slot |
+| `check_replay()` | Replay finishes or stops early | Check save counts and optional tensor metadata |
+
+The call chain during backward is:
+
+```text
+loss.backward()
+    -> autograd requests a saved tensor
+    -> state.unpack(slot)
+        -> retrieve retained checkpoint inputs
+        -> enable gradients and install replay hooks
+        -> state.replay(...)                 # recompute_fn
+            -> function(...)                 # Your computation runs again
+                -> state.pack_recomputed(tensor)
+                                             # Fill slots at save points
+        -> catch the internal early-stop exception, if raised
+        -> check_replay()
+        -> return the requested tensor to the original backward graph
+```
+
+Later calls to `unpack` consume the already-filled slots without another replay.
+The gradient formulas remain those of the original forward graph.
+
+### `context_fn`: customize the two passes, including SAC
+
+`context_fn` is a factory returning a pair of context managers:
+
+```python
+forward_context, recompute_context = context_fn()
+```
+
+The default contexts do nothing. For SAC, supply a factory that creates paired
+dispatch modes with a shared cache:
+
+```python
+from functools import partial
+
+output = checkpoint(
+    block,
+    x,
+    weight,
+    scale=2,
+    context_fn=partial(
+        create_selective_checkpoint_contexts,
+        [torch.ops.aten.mm.default],
+    ),
+)
+```
+
+`checkpoint` calls the factory once per invocation. The forward context caches
+selected operation outputs; the recompute context reuses those outputs during
+replay. Creating the pair inside the factory gives each checkpoint invocation
+its own cache.
+
+`create_selective_checkpoint_contexts` accepts either a list of concrete
+operation overloads, as above, or a callable policy:
+
+```python
+def policy(ctx, op, *args, **kwargs):
+    # ctx.is_recompute is False in forward and True during replay.
+    if op == torch.ops.aten.mm.default:
+        return CheckpointPolicy.MUST_SAVE
+    return CheckpointPolicy.PREFER_RECOMPUTE
+```
+
+Here, `args` and `kwargs` belong to the intercepted operation. The helper also
+accepts `stats=SelectiveCheckpointStats()` for instrumentation and
+`allow_cache_entry_mutation=False`, which rejects mutated cached tensors by
+default.
+
+### Checkpoint options
+
+| Option | Default | Effect |
+|---|---|---|
+| `preserve_rng_state` | `True` | Reproduce forward randomness during replay, then restore the caller's RNG state |
+| `context_fn` | Two no-op contexts | Supply forward and recompute contexts, such as SAC dispatch modes |
+| `early_stop` | `True` | Stop replay after the last recorded save point |
+| `determinism_check` | `True` | Compare replayed tensor shape, dtype, and device; does not compare numerical values |
+| `stats` | `None` | Optionally supply a `CheckpointStats` instance to inspect intercepted saves and replay activity |
+
+Saved-tensor count checks still run when `determinism_check=False`. These option
+names belong to `checkpoint`; other keyword arguments are forwarded to
+`function`. Thus `scale=2` reaches `block`, while `early_stop=False` configures the
+wrapper. If your callable itself needs one of the reserved names, bind that
+argument in a separate wrapper or `partial` before passing it to `checkpoint`.
+
+## Pseudocode: without AC, with AC, and with SAC
+
+Use the same function in all three cases so the memory and computation changes
+are directly comparable:
+
+```python
+def function(x, w):
+    a = x @ w
+    b = a.sin()
+    y = b.cos()
+    return y
+```
+
+Assume `x` and `w` are 2D matrices that both require gradients. Backward needs
+`b` for `cos`, `a` for `sin`, and `x` and `w` for the matrix multiply.
+The pseudocode exposes autograd's save events; user code does not write those
+saves or backward formulas manually. Slot numbers are illustrative, with the
+same ordering used in forward and replay.
+
+### 1. Without activation checkpointing
+
+```text
+FORWARD(x, w):
+    save x and w for backward
+    a = matmul(x, w)
+
+    save a for backward
+    b = sin(a)
+
+    save b for backward
+    y = cos(b)
+
+    return y
+
+
+BACKWARD(grad_y):
+    b = load saved b
+    grad_b = grad_y * (-sin(b))
+
+    a = load saved a
+    grad_a = grad_b * cos(a)
+
+    x = load saved x
+    w = load saved w
+    grad_x = matmul(grad_a, transpose(w))
+    grad_w = matmul(transpose(x), grad_a)
+
+    return grad_x, grad_w
+```
+
+Autograd retains the intermediate values `a` and `b` between forward and
+backward, along with the inputs needed by the matrix multiply. No forward
+operations need to be replayed.
+
+### 2. With activation checkpointing
+
+Forward computes the same output and builds the same backward graph. AC changes
+what autograd saves: each tensor is replaced with an empty slot. Boundary inputs
+remain available so the function can be replayed.
+
+```text
+AC_FORWARD(x, w):
+    retain x and w as checkpoint inputs
+    replay_complete = False
+
+    when matmul tries to save x and w:
+        create empty slots 0 and 1
+    a = matmul(x, w)
+
+    when sin tries to save a:
+        create empty slot 2
+    b = sin(a)
+
+    when cos tries to save b:
+        create empty slot 3
+    y = cos(b)
+
+    return y
+    # Neither a nor b is retained by these slots.
+
+
+AC_REPLAY():
+    x, w = retained checkpoint inputs
+
+    when matmul tries to save x and w:
+        fill slots 0 and 1
+    a = matmul(x, w)                    # Extra computation
+
+    when sin tries to save a:
+        fill slot 2
+    b = sin(a)                          # Extra computation
+
+    when cos tries to save b:
+        fill slot 3
+        STOP REPLAY                     # Last original save point reached
+                                        # Do not compute cos(b) again
+
+
+UNPACK(slot):
+    if not replay_complete:
+        run AC_REPLAY(), catching its internal STOP
+        validate saved-tensor count and metadata
+        replay_complete = True
+
+    tensor = slot.tensor
+    clear slot
+    return tensor
+
+
+BACKWARD(grad_y):
+    b = UNPACK(slot 3)                   # First request triggers replay
+    grad_b = grad_y * (-sin(b))
+
+    a = UNPACK(slot 2)                   # Already filled by that replay
+    grad_a = grad_b * cos(a)
+
+    x = UNPACK(slot 0)
+    w = UNPACK(slot 1)
+    grad_x = matmul(grad_a, transpose(w))
+    grad_w = matmul(transpose(x), grad_a)
+
+    return grad_x, grad_w
+```
+
+Replay fills slots in forward save order; backward consumes them in the order
+its gradient formulas require. It runs once, on the first tensor request.
+
+This shows `early_stop=True`. For this example, the last save event happens
+before the final `cos` kernel executes, so replay can stop there. With
+`early_stop=False`, it would finish the function and discard the replay output.
+The real implementation also restores RNG and autocast settings around replay,
+uses detached tensors to fill slots, and skips slots whose graph owners have
+already been freed; those details are omitted here to expose the main flow.
+
+### 3. With selective activation checkpointing
+
+Keep the AC slots, and add a separate SAC cache. Select the matrix multiply's
+output for saving; recompute the other operations:
+
+```text
+POLICY:
+    matmul -> SAVE
+    sin    -> RECOMPUTE
+    cos    -> RECOMPUTE
+
+
+SAC_FORWARD(x, w):
+    retain x and w as checkpoint inputs
+    replay_complete = False
+    cache = empty per-operation FIFO queues
+
+    when matmul tries to save x and w:
+        create empty slots 0 and 1       # AC intercepts autograd's saves
+    a = matmul(x, w)
+    cache[matmul].append(detach(a), a.version)
+                                        # SAC retains the selected output
+
+    when sin tries to save a:
+        create empty slot 2
+    b = sin(a)                          # No SAC cache entry
+
+    when cos tries to save b:
+        create empty slot 3
+    y = cos(b)                          # No SAC cache entry
+
+    return y
+    # The SAC cache retains a. Nothing here retains b for backward.
+
+
+SAC_REPLAY():
+    x, w = retained checkpoint inputs
+
+    when matmul tries to save x and w:
+        fill slots 0 and 1
+
+    # The function calls matmul, but SAC supplies its output.
+    a, saved_version = cache[matmul].pop_oldest()
+    check a.version == saved_version    # Default mutation protection
+    # Skip the matmul kernel.
+
+    when sin tries to save a:
+        fill slot 2
+    b = sin(a)                          # Recompute this kernel
+
+    when cos tries to save b:
+        fill slot 3
+        STOP REPLAY                     # Skip the final cos kernel
+
+
+UNPACK(slot):
+    if not replay_complete:
+        run SAC_REPLAY(), catching its internal STOP
+        validate saved-tensor count and metadata
+        replay_complete = True
+
+    tensor = slot.tensor
+    clear slot
+    return tensor
+
+
+BACKWARD(grad_y):
+    b = UNPACK(slot 3)                   # Triggers SAC_REPLAY once
+    grad_b = grad_y * (-sin(b))
+
+    a = UNPACK(slot 2)
+    grad_a = grad_b * cos(a)
+
+    x = UNPACK(slot 0)
+    w = UNPACK(slot 1)
+    grad_x = matmul(grad_a, transpose(w))
+    grad_w = matmul(transpose(x), grad_a)
+
+    return grad_x, grad_w
+```
+
+Autograd still encounters the matrix multiply's save points when SAC supplies
+the cached output. SAC skips that operation's **forward kernel during replay**;
+the matrix multiplications required to compute gradients still execute.
+`detach(a)` shares tensor storage, so caching it keeps `a`'s storage alive.
+
+### What changes across the three cases?
+
+| Aspect in this example | Without AC | AC | SAC: save `matmul` |
+|---|---|---|---|
+| Boundary inputs retained | `x`, `w` | `x`, `w` | `x`, `w` |
+| Intermediate values retained after forward | `a`, `b` | Neither | `a` |
+| Recompute `matmul(x, w)` during replay | No replay | Yes | No: reuse cached `a` |
+| Recompute `sin(a)` during replay | No replay | Yes | Yes |
+| Recompute final `cos(b)` during replay | No replay | No, with early stop | No, with early stop |
+| Backward gradient formulas | Standard formulas | Same formulas | Same formulas |
+
+All three compute and return `y` during the original forward. The table counts
+retained tensor values, excluding graph/slot metadata, the returned output, and
+temporary backward allocations. The `sin` and `cos` evaluations in the backward
+formulas themselves are also required in every case.
+
+AC saves memory by reconstructing `a` and `b`. SAC retains `a` to avoid the
+expensive matrix multiply during that reconstruction, trading some memory
+savings for less replay computation.
+
 ## Realistic decoder workload
 
 `decoder.py` contains a pre-norm decoder block with RMSNorm, fused QKV
